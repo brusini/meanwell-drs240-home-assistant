@@ -1,0 +1,29 @@
+# yamllint configuration. Run: yamllint .
+extends: default
+
+ignore: |
+  _internal/
+  node_modules/
+
+rules:
+  # Home Assistant templates and dashboard markdown are long by nature
+  line-length:
+    max: 180
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+    level: warning
+  # Home Assistant files have no "---" document start
+  document-start: disable
+  # "on" and "off" are quoted where they are states; allow the YAML 1.1 words in GitHub workflow keys
+  truthy:
+    allowed-values: ["true", "false", "on"]
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+  braces:
+    max-spaces-inside: 0

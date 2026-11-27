@@ -1,0 +1,55 @@
+name: Field report
+description: Share how your DRS behaves. Reports from other models, firmware versions, and batteries are very welcome.
+title: "Field report: "
+labels: ["field report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. Please remove private data first: IP addresses, host names, serial numbers, names, and locations.
+  - type: input
+    id: model
+    attributes:
+      label: DRS model
+      description: The full model name from the front panel, and the firmware revision if you read it.
+      placeholder: DRS-240-12
+    validations:
+      required: true
+  - type: input
+    id: battery
+    attributes:
+      label: Battery
+      description: Chemistry, nominal voltage, capacity, and whether it has a built-in battery management system.
+      placeholder: LiFePO4, 12.8 V, 100 Ah, built-in BMS
+    validations:
+      required: true
+  - type: input
+    id: dip
+    attributes:
+      label: DIP switches and CN12
+      description: Positions of DIP 1, 2, and 3. Are CN12 pins 7 and 8 linked?
+      placeholder: 1 ON, 2 OFF, 3 ON. Pins 7 and 8 open
+    validations:
+      required: true
+  - type: input
+    id: load
+    attributes:
+      label: Typical load current
+      placeholder: 2.2 A
+  - type: textarea
+    id: after_outage
+    attributes:
+      label: After a power outage
+      description: What does the battery current do when AC power returns? How many outages have you watched?
+    validations:
+      required: true
+  - type: textarea
+    id: at_rest
+    attributes:
+      label: On AC power for hours
+      description: Does the battery current stay near zero? Does the battery voltage hold?
+  - type: textarea
+    id: other
+    attributes:
+      label: Anything else
+      description: Register values that differ from the guide, things that surprised you, screenshots of the battery chart.

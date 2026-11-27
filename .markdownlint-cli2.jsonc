@@ -1,0 +1,22 @@
+{
+  // markdownlint-cli2 configuration. Run: npx markdownlint-cli2
+  "globs": ["**/*.md"],
+  "ignores": ["_internal/**", "node_modules/**", "LICENSE"],
+  "config": {
+    "default": true,
+    // One sentence or paragraph per line: no hard wrap
+    "MD013": false,
+    // Tables and GitHub alerts use inline HTML-free Markdown, but allow <br> in tables if ever needed
+    "MD033": { "allowed_elements": ["br"] },
+    // The same heading text may appear under different parents (for example "Fault" rows are not headings, but page sections repeat)
+    "MD024": { "siblings_only": true },
+    // Ordered lists use 1. 2. 3.
+    "MD029": { "style": "ordered" },
+    // Dash for unordered lists
+    "MD004": { "style": "dash" },
+    // Fenced code blocks with a language
+    "MD040": true,
+    "MD046": { "style": "fenced" },
+    "MD048": { "style": "backtick" }
+  }
+}

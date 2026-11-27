@@ -1,0 +1,574 @@
+# Dashboard for the Mean Well DRS-240 package (homeassistant/packages/drs240.yaml)
+# Guide: docs/dashboard.md in https://github.com/brusini/meanwell-drs240-home-assistant
+#
+# One sections view, laid out for a 1920 px wide screen. The four charts need the custom card
+# "apexcharts-card" (install it with HACS). Everything else is built in.
+# Lines that start with "# optional:" are tiles for devices that are not part of the package.
+# Remove the "# optional: " prefix and set your own entity ID to use them.
+
+# The markdown cards hold long template lines, where a line break would change the output.
+# yamllint disable rule:line-length
+
+views:
+  - title: DRS-240
+    path: drs240
+    icon: mdi:power-plug-battery
+    type: sections
+    max_columns: 4
+    dense_section_placement: true
+    badges:
+      - type: entity
+        entity: binary_sensor.drs_link
+        name: DRS link
+        show_name: true
+        show_state: true
+        show_icon: true
+        icon: mdi:lan-disconnect
+        color: red
+        visibility:
+          - condition: state
+            entity: binary_sensor.drs_link
+            state_not: "on"
+      - type: entity
+        entity: binary_sensor.drs_settings_ok
+        name: Settings changed
+        show_name: true
+        show_state: false
+        show_icon: true
+        icon: mdi:tune-variant
+        color: red
+        visibility:
+          - condition: state
+            entity: binary_sensor.drs_settings_ok
+            state: "off"
+      - type: entity
+        entity: binary_sensor.drs_backup_blocked
+        name: Backup blocked
+        show_name: true
+        show_state: false
+        show_icon: true
+        icon: mdi:battery-lock
+        color: red
+        visibility:
+          - condition: state
+            entity: binary_sensor.drs_backup_blocked
+            state: "on"
+      - type: entity
+        entity: sensor.drs_ac_input_voltage
+        name: AC input
+        show_name: true
+        show_state: true
+        show_icon: true
+      - type: entity
+        entity: sensor.drs_output_voltage
+        name: Output
+        show_name: true
+        show_state: true
+        show_icon: true
+      - type: entity
+        entity: sensor.drs_output_current
+        name: Load
+        show_name: true
+        show_state: true
+        show_icon: true
+        icon: mdi:current-dc
+      - type: entity
+        entity: sensor.drs_internal_temperature
+        name: Inside
+        show_name: true
+        show_state: true
+        show_icon: true
+      # optional: - type: entity
+      # optional:   entity: sensor.battery_temperature
+      # optional:   name: Battery
+      # optional:   show_name: true
+      # optional:   show_state: true
+      # optional:   show_icon: true
+      - type: entity
+        entity: binary_sensor.drs_dc_ok
+        name: DC OK
+        show_name: true
+        show_state: true
+        show_icon: true
+        icon: mdi:check-circle-outline
+        color: green
+      - type: entity
+        entity: binary_sensor.drs_on_battery
+        name: On battery
+        show_name: true
+        show_state: true
+        show_icon: true
+        icon: mdi:battery-arrow-down
+        color: amber
+      - type: entity
+        entity: sensor.drs_battery_soc
+        name: State of charge
+        show_name: true
+        show_state: true
+        show_icon: true
+      - type: entity
+        entity: sensor.drs_battery_runtime_text
+        name: Time left
+        show_name: true
+        show_state: true
+        show_icon: true
+        icon: mdi:timer-sand
+        visibility:
+          - condition: state
+            entity: sensor.drs_battery_runtime_text
+            state_not:
+              - unknown
+              - unavailable
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Power
+            icon: mdi:flash
+          - type: gauge
+            entity: sensor.drs_ac_input_voltage
+            name: AC input
+            min: 180
+            max: 260
+            needle: true
+            segments:
+              - from: 180
+                color: "#db4437"
+              - from: 207
+                color: "#43a047"
+              - from: 253
+                color: "#db4437"
+            grid_options:
+              columns: 6
+              rows: 3
+          - type: gauge
+            entity: sensor.drs_output_voltage
+            name: Output
+            min: 10
+            max: 15
+            needle: true
+            grid_options:
+              columns: 6
+              rows: 3
+          - type: tile
+            entity: sensor.drs_output_current
+            name: Load current
+            icon: mdi:current-dc
+            grid_options:
+              columns: 6
+              rows: 1
+          # A smart plug or relay on the AC input of the DRS. The icon toggles only after a confirmation.
+          # optional: - type: tile
+          # optional:   entity: switch.drs_ac_input
+          # optional:   name: AC input switch
+          # optional:   icon: mdi:power-socket
+          # optional:   tap_action:
+          # optional:     action: more-info
+          # optional:   icon_tap_action:
+          # optional:     action: toggle
+          # optional:     confirmation:
+          # optional:       text: >-
+          # optional:         Switch the AC input of the DRS-240? Without AC it runs from the battery. If your network
+          # optional:         runs from the DRS and the battery reaches the cut-off, you cannot switch AC back on remotely.
+          # optional:         To restart a charge: off for 10 to 20 s, then on.
+          # optional:   grid_options:
+          # optional:     columns: 6
+          # optional:     rows: 1
+          - type: tile
+            entity: binary_sensor.drs_dc_ok
+            name: Output OK (DC OK)
+            icon: mdi:check-circle-outline
+            color: green
+            grid_options:
+              columns: 6
+              rows: 1
+          - type: tile
+            entity: binary_sensor.drs_on_battery
+            name: On battery
+            icon: mdi:battery-arrow-down
+            color: amber
+            grid_options:
+              columns: 6
+              rows: 1
+          - type: tile
+            entity: sensor.drs_internal_temperature
+            name: Inside the DRS
+            icon: mdi:thermometer
+            grid_options:
+              columns: 6
+              rows: 1
+          # A temperature sensor fixed to the battery case
+          # optional: - type: tile
+          # optional:   entity: sensor.battery_temperature
+          # optional:   name: On the battery
+          # optional:   icon: mdi:snowflake-thermometer
+          # optional:   grid_options:
+          # optional:     columns: 6
+          # optional:     rows: 1
+          - type: markdown
+            content: |-
+              {% set p = 'binary_sensor.drs_' %}
+              {% set faults = {'ac_fail': 'AC fail', 'over_temperature': 'Over temperature', 'output_over_voltage': 'Output over voltage', 'overload': 'Overload', 'short_circuit': 'Short circuit', 'high_ambient_temperature': 'High ambient temperature', 'eeprom_error': 'EEPROM error', 'ntc_sensor_shorted': 'NTC sensor shorted', 'buffering_timeout': 'Buffering timeout', 'cc_stage_timeout': 'CC stage timeout', 'cv_stage_timeout': 'CV stage timeout', 'float_stage_timeout': 'Float stage timeout'} %}
+              {% set ns = namespace(active=[]) %}
+              {% for key, label in faults.items() if is_state(p ~ key, 'on') %}{% set ns.active = ns.active + [label] %}{% endfor %}
+              {% if not is_state('binary_sensor.drs_link', 'on') %}### ⚠️ No link to the DRS
+              {% if state_attr('sensor.drs_battery_charge', 'last_v') | float(99) <= states('sensor.drs_set_battery_low_cutoff') | float(11.2) + 0.5 %}Most likely cut off at low battery and waiting for AC{% else %}The unit has no power, or the RS-485 link is broken{% endif %}{% elif is_state(p ~ 'cut_off', 'on') %}### ⛔ Output off, waiting for AC{% elif is_state(p ~ 'on_battery', 'on') %}### 🔋 On battery{% else %}### 🔌 On AC power{% endif %}
+              {% if is_state('binary_sensor.drs_link', 'on') %}AC **{{ states('sensor.drs_ac_input_voltage') }} V** · output **{{ states('sensor.drs_output_voltage') }} V / {{ states('sensor.drs_output_current') }} A**
+
+              {% if ns.active %}⚠️ **Active faults:** {{ ns.active | join(', ') }}{% else %}✅ No faults{% endif %}{% endif %}
+              {% if is_state(p ~ 'backup_blocked', 'on') %}
+
+              ⚠️ **The battery backup may not work after the cut-off.**{% endif %}{% if is_state(p ~ 'no_battery_detected', 'on') %}
+
+              ℹ️ No battery connected{% endif %}
+      - type: grid
+        cards:
+          - type: heading
+            heading: Battery
+            icon: mdi:battery-charging
+          - type: gauge
+            entity: sensor.drs_battery_soc
+            name: State of charge
+            min: 0
+            max: 100
+            needle: true
+            segments:
+              - from: 0
+                color: "#db4437"
+              - from: 15
+                color: "#ffa600"
+              - from: 35
+                color: "#43a047"
+            grid_options:
+              columns: 6
+              rows: 3
+          - type: tile
+            entity: sensor.drs_battery_current
+            name: Battery current
+            icon: mdi:current-dc
+            grid_options:
+              columns: 6
+              rows: 1
+          - type: tile
+            entity: sensor.drs_battery_voltage
+            name: Battery voltage
+            icon: mdi:car-battery
+            grid_options:
+              columns: 6
+              rows: 1
+          - type: tile
+            entity: sensor.drs_set_battery_low_cutoff
+            name: Cut-off voltage
+            icon: mdi:battery-off-outline
+            grid_options:
+              columns: 6
+              rows: 1
+          - type: tile
+            entity: sensor.drs_battery_charge
+            name: Stored charge
+            icon: mdi:battery-sync
+            grid_options:
+              columns: 6
+              rows: 1
+          - type: tile
+            entity: binary_sensor.drs_battery_discharging
+            name: Discharging
+            icon: mdi:battery-arrow-down-outline
+            grid_options:
+              columns: 6
+              rows: 1
+          - type: markdown
+            content: |-
+              {%- set p = 'binary_sensor.drs_' -%}{%- set ch = 'sensor.drs_battery_charge' -%}{%- set link = is_state('binary_sensor.drs_link', 'on') -%}
+              **Stage:** {% if not link %}no data{% elif is_state(p ~ 'no_battery_detected', 'on') %}no battery connected{% elif is_state(p ~ 'cut_off', 'on') %}cut off at low battery, output off{% elif is_state(p ~ 'battery_discharging', 'on') or is_state(p ~ 'on_battery', 'on') %}discharging{% elif (is_state(p ~ 'charge_stage_cc', 'on') or is_state(p ~ 'charge_stage_cv', 'on')) and states('sensor.drs_battery_current') | float(0) < -0.3 %}the DRS shows a charge stage, but the battery is discharging{% elif is_state(p ~ 'charge_stage_cc', 'on') %}constant current (CC){% elif is_state(p ~ 'charge_stage_cv', 'on') %}constant voltage (CV){% elif is_state(p ~ 'charge_stage_float', 'on') %}float{% elif is_state(p ~ 'battery_full', 'on') %}charge complete, battery at rest{% else %}not charging{% endif %}
+              **Charge:** {% if has_value('sensor.drs_battery_soc') %}{{ states('sensor.drs_battery_soc') }}% ({{ states(ch) | float(0) | round(1) }} of {{ state_attr(ch, 'capacity_ah') | float(50) | round(0) | int }} Ah){% if not link %}, when the link was lost{% endif %}{% else %}unknown until the first full charge{% endif %}
+              **Time:** {{ states('sensor.drs_battery_time_text') }}
+              {% if state_attr(ch, 'calibrated') == true %}✅ Counted from the last full or empty point{% else %}ℹ️ Rough estimate from the battery voltage{% endif %}
+      - type: grid
+        cards:
+          - type: heading
+            heading: Protections and faults
+            icon: mdi:shield-alert-outline
+          - type: entities
+            state_color: true
+            entities:
+              - entity: binary_sensor.drs_ac_fail
+                name: AC fail
+              - entity: binary_sensor.drs_overload
+                name: Overload
+              - entity: binary_sensor.drs_short_circuit
+                name: Short circuit
+              - entity: binary_sensor.drs_output_over_voltage
+                name: Output over voltage
+              - entity: binary_sensor.drs_over_temperature
+                name: Over temperature
+              - entity: binary_sensor.drs_high_ambient_temperature
+                name: High ambient temperature
+              - entity: binary_sensor.drs_eeprom_error
+                name: EEPROM error
+              - entity: binary_sensor.drs_ntc_sensor_shorted
+                name: NTC sensor shorted
+              - entity: binary_sensor.drs_no_battery_detected
+                name: No battery detected
+      - type: grid
+        cards:
+          - type: heading
+            heading: Charge stages and timeouts
+            icon: mdi:battery-charging-outline
+          - type: entities
+            state_color: true
+            entities:
+              - entity: binary_sensor.drs_charge_stage_cc
+                name: Constant current (CC)
+              - entity: binary_sensor.drs_charge_stage_cv
+                name: Constant voltage (CV)
+              - entity: binary_sensor.drs_charge_stage_float
+                name: Float (3-stage only)
+              - entity: binary_sensor.drs_battery_full
+                name: Charge complete
+              - entity: binary_sensor.drs_battery_discharging
+                name: Discharging
+              - entity: binary_sensor.drs_buffering_timeout
+                name: Buffering timeout (inactive)
+              - entity: binary_sensor.drs_cc_stage_timeout
+                name: CC timeout
+              - entity: binary_sensor.drs_cv_stage_timeout
+                name: CV timeout
+              - entity: binary_sensor.drs_float_stage_timeout
+                name: Float timeout (3-stage only)
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Last 24 hours
+            icon: mdi:chart-line
+          - type: custom:apexcharts-card
+            graph_span: 24h
+            header:
+              show: true
+              title: Battery
+              show_states: true
+              colorize_states: true
+            yaxis:
+              - id: v
+                decimals: 2
+              - id: i
+                opposite: true
+                decimals: 2
+            series:
+              - entity: sensor.drs_battery_voltage
+                name: Voltage
+                yaxis_id: v
+                stroke_width: 2
+                group_by:
+                  func: avg
+                  duration: 5min
+              - entity: sensor.drs_battery_current
+                name: Current
+                yaxis_id: i
+                stroke_width: 2
+                group_by:
+                  func: avg
+                  duration: 5min
+            grid_options:
+              columns: 12
+              rows: auto
+            apex_config:
+              chart:
+                height: 305
+          - type: custom:apexcharts-card
+            graph_span: 24h
+            header:
+              show: true
+              title: State of charge and runtime
+              show_states: true
+              colorize_states: true
+            yaxis:
+              - id: soc
+                min: 0
+                max: 100
+                decimals: 0
+              - id: rt
+                opposite: true
+                min: 0
+                decimals: 1
+            series:
+              - entity: sensor.drs_battery_soc
+                name: State of charge
+                yaxis_id: soc
+                stroke_width: 2
+                group_by:
+                  func: last
+                  duration: 5min
+              - entity: sensor.drs_battery_runtime
+                name: Runtime left, h
+                yaxis_id: rt
+                stroke_width: 2
+                group_by:
+                  func: last
+                  duration: 5min
+            grid_options:
+              columns: 12
+              rows: auto
+            apex_config:
+              chart:
+                height: 305
+            cache: false
+          - type: custom:apexcharts-card
+            graph_span: 24h
+            header:
+              show: true
+              title: AC input and output
+              show_states: true
+              colorize_states: true
+            yaxis:
+              - id: ac
+                min: ~210
+                max: ~240
+                decimals: 0
+              - id: dc
+                opposite: true
+                min: ~12
+                max: ~14.5
+                decimals: 2
+            series:
+              - entity: sensor.drs_ac_input_voltage
+                name: AC input
+                yaxis_id: ac
+                stroke_width: 2
+                group_by:
+                  func: avg
+                  duration: 5min
+              - entity: sensor.drs_output_voltage
+                name: Output
+                yaxis_id: dc
+                stroke_width: 2
+                group_by:
+                  func: avg
+                  duration: 5min
+            grid_options:
+              columns: 12
+              rows: auto
+            apex_config:
+              chart:
+                height: 305
+          - type: custom:apexcharts-card
+            graph_span: 24h
+            header:
+              show: true
+              title: Load and temperature
+              show_states: true
+              colorize_states: true
+            yaxis:
+              - id: a
+                min: 0
+                max: ~5
+                decimals: 2
+              - id: t
+                opposite: true
+                min: ~30
+                max: ~50
+                decimals: 1
+            series:
+              - entity: sensor.drs_output_current
+                name: Load current
+                yaxis_id: a
+                stroke_width: 2
+                group_by:
+                  func: avg
+                  duration: 5min
+              - entity: sensor.drs_internal_temperature
+                name: Internal temperature
+                yaxis_id: t
+                stroke_width: 2
+                group_by:
+                  func: avg
+                  duration: 5min
+            grid_options:
+              columns: 12
+              rows: auto
+            apex_config:
+              chart:
+                height: 305
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Settings (read-only)
+            icon: mdi:tune-vertical
+          - type: markdown
+            content: "**Active curve:** {{ states('sensor.drs_active_curve') }}"
+            grid_options:
+              columns: full
+          - type: entities
+            title: Charge curve
+            grid_options:
+              columns: 12
+              rows: auto
+            entities:
+              - entity: sensor.drs_set_charge_current
+                name: Charge current (register, the knob decides)
+              - entity: sensor.drs_set_boost_voltage
+                name: Boost voltage (register, default curve only)
+              - entity: sensor.drs_set_float_voltage
+                name: Float voltage (register, default curve only)
+              - entity: sensor.drs_set_taper_current
+                name: Taper current (register)
+              - entity: sensor.drs_set_curve_config_raw
+                name: CURVE_CONFIG (raw)
+              - type: section
+                label: Stage timeouts
+              - entity: sensor.drs_set_cc_timeout
+                name: CC stage
+              - entity: sensor.drs_set_cv_timeout
+                name: CV stage
+              - entity: sensor.drs_set_fv_timeout
+                name: Float stage (3-stage only)
+              - type: section
+                label: Battery protection
+              - entity: sensor.drs_set_battery_low_cutoff
+                name: Battery cut-off
+              - entity: sensor.drs_set_force_start_battery_low_cutoff
+                name: Battery cut-off in force-start mode
+              - type: section
+                label: Output
+              - entity: sensor.drs_set_operation
+                name: OPERATION (1 on, 0 off)
+              - entity: sensor.drs_set_output_voltage
+                name: VOUT_SET (register, no effect)
+          - type: entities
+            title: UPS mode
+            grid_options:
+              columns: 12
+              rows: auto
+            entities:
+              - entity: sensor.drs_set_buffering_time
+                name: Buffering time T1 (inactive)
+              - entity: sensor.drs_set_ups_delay_time
+                name: UPS delay T2 (inactive)
+              - entity: sensor.drs_set_ups_shutdown_time
+                name: UPS shutdown T3 (inactive)
+              - entity: sensor.drs_set_ups_config_raw
+                name: UPS_CONFIG (raw)
+              - entity: sensor.drs_set_system_config_raw
+                name: SYSTEM_CONFIG (raw)
+              - type: section
+                label: AC thresholds
+              - entity: sensor.drs_set_ac_fail_low_line
+                name: AC fail, low line
+              - entity: sensor.drs_set_ac_fail_high_line
+                name: AC fail, high line
+              - entity: sensor.drs_set_ac_ok_low_line
+                name: AC OK, low line
+              - entity: sensor.drs_set_ac_ok_high_line
+                name: AC OK, high line
+              - type: section
+                label: Status words
+              - entity: sensor.drs_fault_status_raw
+                name: FAULT_STATUS
+              - entity: sensor.drs_charge_status_raw
+                name: CHG_STATUS
+              - entity: sensor.drs_system_status_raw
+                name: SYSTEM_STATUS
+              - entity: binary_sensor.drs_dc_off
+                name: OP_OFF bit (for information)

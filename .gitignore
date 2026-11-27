@@ -1,0 +1,15 @@
+# Working files, never published
+/_internal/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Tooling
+node_modules/
+__pycache__/
+*.pyc
+.venv/

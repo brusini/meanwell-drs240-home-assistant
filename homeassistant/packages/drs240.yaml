@@ -1,0 +1,1153 @@
+# Mean Well DRS-240 (DC-UPS) for Home Assistant, over Modbus RTU
+# Guide: docs/home-assistant-setup.md in https://github.com/brusini/meanwell-drs240-home-assistant
+#
+# Before the first start, set three values. They are marked "SET ME 1", "SET ME 2" and "SET ME 3" below:
+#   1. the serial port of your RS-485 adapter
+#   2. the Modbus slave ID of the DRS (131 unless you changed CN12 A0/A1)
+#   3. the capacity of your battery in Ah
+# Optional: where alerts go (script drs_notify) and the settings reference (binary sensor "DRS settings OK").
+#
+# Tested with a DRS-240-12, a 12.8 V 50 Ah LiFePO4 battery and Home Assistant Core 2026.9.
+# The voltage thresholds are for that battery and the 12 V model.
+# Read docs/state-of-charge-and-alerts.md before you use another battery.
+#
+# Load this file as a package. In configuration.yaml:
+#   homeassistant:
+#     packages: !include_dir_named packages
+
+modbus:
+  - name: drs240
+    type: serial
+    method: rtu
+    # SET ME 1: replace the whole path with the /dev/serial/by-id/ path of your adapter (not /dev/ttyUSB0)
+    port: /dev/serial/by-id/usb-REPLACE_WITH_YOUR_ADAPTER-if00-port0
+    baudrate: 115200
+    bytesize: 8
+    parity: N
+    stopbits: 1
+    timeout: 1                      # the DRS answers within 12.5 ms (manual 5.4.1.2)
+    message_wait_milliseconds: 50   # manual: minimum request period 50 ms
+    sensors:
+      # ---------- Measurements (function code 04) ----------
+      - name: DRS output voltage
+        unique_id: drs_output_voltage
+        # SET ME 2: slave ID = 128 + device address (0 to 3). Change only the number and keep "&drs_slave":
+        # every other entry reuses this value as "*drs_slave".
+        slave: &drs_slave 131
+        address: 96                 # 0x0060 READ_VOUT
+        input_type: input
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: V
+        device_class: voltage
+        state_class: measurement
+        scan_interval: 10
+
+      - name: DRS output current
+        unique_id: drs_output_current
+        slave: *drs_slave
+        address: 97                 # 0x0061 READ_IOUT
+        input_type: input
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: A
+        device_class: current
+        state_class: measurement
+        scan_interval: 10
+
+      - name: DRS AC input voltage
+        unique_id: drs_ac_input_voltage
+        slave: *drs_slave
+        address: 80                 # 0x0050 READ_VIN
+        input_type: input
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: V
+        device_class: voltage
+        state_class: measurement
+        scan_interval: 10
+
+      - name: DRS internal temperature
+        unique_id: drs_internal_temperature
+        slave: *drs_slave
+        address: 98                 # 0x0062 READ_TEMPERATURE_1
+        input_type: input
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        scan_interval: 30
+
+      - name: DRS battery voltage
+        unique_id: drs_battery_voltage
+        slave: *drs_slave
+        address: 211                # 0x00D3 READ_VBAT
+        input_type: input
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: V
+        device_class: voltage
+        state_class: measurement
+        scan_interval: 10
+
+      - name: DRS battery current
+        unique_id: drs_battery_current
+        slave: *drs_slave
+        address: 212                # 0x00D4 READ_IBAT, signed: negative = discharging
+        input_type: input
+        data_type: int16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: A
+        device_class: current
+        state_class: measurement
+        scan_interval: 10
+
+      # READ_BAT_TEMPERATURE (213, 0x00D5) is not polled: without the NTC sensor the unit
+      # reports a fixed 25.0 °C. Add it if you connect the NTC.
+
+      # ---------- Status words (function code 03), decoded by the templates below ----------
+      - name: DRS fault status raw
+        unique_id: drs_fault_status_raw
+        slave: *drs_slave
+        address: 64                 # 0x0040 FAULT_STATUS
+        input_type: holding
+        data_type: uint16
+        scan_interval: 5
+
+      - name: DRS charge status raw
+        unique_id: drs_charge_status_raw
+        slave: *drs_slave
+        address: 184                # 0x00B8 CHG_STATUS
+        input_type: holding
+        data_type: uint16
+        scan_interval: 5
+
+      - name: DRS system status raw
+        unique_id: drs_system_status_raw
+        slave: *drs_slave
+        address: 195                # 0x00C3 SYSTEM_STATUS
+        input_type: holding
+        data_type: uint16
+        scan_interval: 5
+
+      # ---------- Settings, read back every 5 min (function code 03) ----------
+      - name: DRS set operation
+        unique_id: drs_set_operation
+        slave: *drs_slave
+        address: 0                  # 0x0000 OPERATION, 0 = output off, 1 = on
+        input_type: holding
+        data_type: uint16
+        scan_interval: 300
+
+      - name: DRS set output voltage
+        unique_id: drs_set_output_voltage
+        slave: *drs_slave
+        address: 32                 # 0x0020 VOUT_SET, 10 to 14 V, default 12 V
+        input_type: holding
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: V
+        scan_interval: 300
+
+      - name: DRS set charge current
+        unique_id: drs_set_charge_current
+        slave: *drs_slave
+        address: 176                # 0x00B0 CURVE_CC, 4 to 20 A
+        input_type: holding
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: A
+        scan_interval: 300
+
+      - name: DRS set boost voltage
+        unique_id: drs_set_boost_voltage
+        slave: *drs_slave
+        address: 177                # 0x00B1 CURVE_CV, 9 to 15 V, default 14.4 V
+        input_type: holding
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: V
+        scan_interval: 300
+
+      - name: DRS set float voltage
+        unique_id: drs_set_float_voltage
+        slave: *drs_slave
+        address: 178                # 0x00B2 CURVE_FV, 9 V to boost voltage, default 13.8 V
+        input_type: holding
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: V
+        scan_interval: 300
+
+      - name: DRS set taper current
+        unique_id: drs_set_taper_current
+        slave: *drs_slave
+        address: 179                # 0x00B3 CURVE_TC, 0.4 to 2 A
+        input_type: holding
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: A
+        scan_interval: 300
+
+      - name: DRS set curve config raw
+        unique_id: drs_set_curve_config_raw
+        slave: *drs_slave
+        address: 180                # 0x00B4 CURVE_CONFIG, bit field
+        input_type: holding
+        data_type: uint16
+        scan_interval: 300
+
+      - name: DRS set CC timeout
+        unique_id: drs_set_cc_timeout
+        slave: *drs_slave
+        address: 181                # 0x00B5 CURVE_CC_TIMEOUT, 60 to 64800 min, default 600
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: min
+        scan_interval: 300
+
+      - name: DRS set CV timeout
+        unique_id: drs_set_cv_timeout
+        slave: *drs_slave
+        address: 182                # 0x00B6 CURVE_CV_TIMEOUT
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: min
+        scan_interval: 300
+
+      - name: DRS set FV timeout
+        unique_id: drs_set_fv_timeout
+        slave: *drs_slave
+        address: 183                # 0x00B7 CURVE_FV_TIMEOUT
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: min
+        scan_interval: 300
+
+      - name: DRS set system config raw
+        unique_id: drs_set_system_config_raw
+        slave: *drs_slave
+        address: 196                # 0x00C4 SYSTEM_CONFIG, bit field
+        input_type: holding
+        data_type: uint16
+        scan_interval: 300
+
+      - name: DRS set battery low cutoff
+        unique_id: drs_set_battery_low_cutoff
+        slave: *drs_slave
+        address: 208                # 0x00D0 BAT_UVP_SET, 9.6 to 12 V, default 10.44 V
+        input_type: holding
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: V
+        scan_interval: 300
+
+      - name: DRS set force start battery low cutoff
+        unique_id: drs_set_force_start_battery_low_cutoff
+        slave: *drs_slave
+        address: 209                # 0x00D1 Force_BAT_UVP_SET, 8.4 to 12 V
+        input_type: holding
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: V
+        scan_interval: 300
+
+      - name: DRS set UPS config raw
+        unique_id: drs_set_ups_config_raw
+        slave: *drs_slave
+        address: 210                # 0x00D2 UPS_CONFIG, bit field
+        input_type: holding
+        data_type: uint16
+        scan_interval: 300
+
+      - name: DRS set AC fail low line
+        unique_id: drs_set_ac_fail_low_line
+        slave: *drs_slave
+        address: 224                # 0x00E0 AC_Fail_LL_SET, 82 to 120 V, default 82 V
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: V
+        scan_interval: 300
+
+      - name: DRS set AC fail high line
+        unique_id: drs_set_ac_fail_high_line
+        slave: *drs_slave
+        address: 225                # 0x00E1 AC_Fail_HL_SET, 132 to 182 V, default 171.6 V
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: V
+        scan_interval: 300
+
+      - name: DRS set AC OK low line
+        unique_id: drs_set_ac_ok_low_line
+        slave: *drs_slave
+        address: 226                # 0x00E2 AC_OK_LL_SET, 87 to 125 V, default 87 V
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: V
+        scan_interval: 300
+
+      - name: DRS set AC OK high line
+        unique_id: drs_set_ac_ok_high_line
+        slave: *drs_slave
+        address: 227                # 0x00E3 AC_OK_HL_SET, 137 to 187 V, default 182.6 V
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: V
+        scan_interval: 300
+
+      - name: DRS set buffering time
+        unique_id: drs_set_buffering_time
+        slave: *drs_slave
+        address: 228                # 0x00E4 TIME_BUFFERING (T1), active only if UPS_CONFIG bit 2 = 1
+        unit_of_measurement: min
+        input_type: holding
+        data_type: uint16
+        scan_interval: 300
+
+      - name: DRS set UPS delay time
+        unique_id: drs_set_ups_delay_time
+        slave: *drs_slave
+        address: 232                # 0x00E8 UPS_Delay_Time (T2), 60 to 300 s, active only if UPS_CONFIG bit 4 = 1
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: s
+        scan_interval: 300
+
+      - name: DRS set UPS shutdown time
+        unique_id: drs_set_ups_shutdown_time
+        slave: *drs_slave
+        address: 233                # 0x00E9 UPS_Shutdown_Time (T3), 0 to 60 s, active only if UPS_CONFIG bit 5 = 1
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: s
+        scan_interval: 300
+
+# ---------- Battery capacity ----------
+input_number:
+  drs_battery_capacity:
+    name: DRS battery capacity
+    icon: mdi:battery-high
+    unit_of_measurement: Ah
+    mode: box
+    min: 1
+    max: 1000
+    step: 0.1
+    # SET ME 3: usable capacity of your battery in Ah. Home Assistant applies this value at every start.
+    initial: 50
+
+# ---------- Restorable flags of the state-of-charge counter, set by the automation drs_soc_flags ----------
+input_boolean:
+  drs_soc_full_latched:
+    name: DRS SOC full point
+    icon: mdi:battery-check
+  drs_soc_calibrated:
+    name: DRS SOC calibrated
+    icon: mdi:check-decagram
+
+template:
+  # ---------- Status flags decoded from the raw status words ----------
+  - binary_sensor:
+      # FAULT_STATUS 0x0040
+      - name: DRS AC fail
+        unique_id: drs_ac_fail
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_fault_status_raw') }}"
+        state: "{{ states('sensor.drs_fault_status_raw') | int(0) | bitwise_and(32) > 0 }}"
+      - name: DRS over temperature
+        unique_id: drs_over_temperature
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_fault_status_raw') }}"
+        state: "{{ states('sensor.drs_fault_status_raw') | int(0) | bitwise_and(2) > 0 }}"
+      - name: DRS output over voltage
+        unique_id: drs_output_over_voltage
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_fault_status_raw') }}"
+        state: "{{ states('sensor.drs_fault_status_raw') | int(0) | bitwise_and(4) > 0 }}"
+      - name: DRS overload
+        unique_id: drs_overload
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_fault_status_raw') }}"
+        state: "{{ states('sensor.drs_fault_status_raw') | int(0) | bitwise_and(8) > 0 }}"
+      - name: DRS short circuit
+        unique_id: drs_short_circuit
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_fault_status_raw') }}"
+        state: "{{ states('sensor.drs_fault_status_raw') | int(0) | bitwise_and(16) > 0 }}"
+      # Bit 6 OP_OFF, manual: "DC status, 1 = DC turned off". It is not the load output:
+      # it reads 1 on battery with the output live. For information only.
+      - name: DRS DC off
+        unique_id: drs_dc_off
+        availability: "{{ has_value('sensor.drs_fault_status_raw') }}"
+        state: "{{ states('sensor.drs_fault_status_raw') | int(0) | bitwise_and(64) > 0 }}"
+      - name: DRS high ambient temperature
+        unique_id: drs_high_ambient_temperature
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_fault_status_raw') }}"
+        state: "{{ states('sensor.drs_fault_status_raw') | int(0) | bitwise_and(128) > 0 }}"
+
+      # CHG_STATUS 0x00B8
+      - name: DRS battery full
+        unique_id: drs_battery_full
+        availability: "{{ has_value('sensor.drs_charge_status_raw') }}"
+        state: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(1) > 0 }}"
+      - name: DRS charge stage CC
+        unique_id: drs_charge_stage_cc
+        availability: "{{ has_value('sensor.drs_charge_status_raw') }}"
+        state: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(2) > 0 }}"
+      - name: DRS charge stage CV
+        unique_id: drs_charge_stage_cv
+        availability: "{{ has_value('sensor.drs_charge_status_raw') }}"
+        state: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(4) > 0 }}"
+      - name: DRS charge stage float
+        unique_id: drs_charge_stage_float
+        availability: "{{ has_value('sensor.drs_charge_status_raw') }}"
+        state: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(8) > 0 }}"
+      - name: DRS battery discharging
+        unique_id: drs_battery_discharging
+        availability: "{{ has_value('sensor.drs_charge_status_raw') }}"
+        state: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(128) > 0 }}"
+      - name: DRS NTC sensor shorted
+        unique_id: drs_ntc_sensor_shorted
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_charge_status_raw') }}"
+        state: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(1024) > 0 }}"
+      - name: DRS no battery detected
+        unique_id: drs_no_battery_detected
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_charge_status_raw') }}"
+        state: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(2048) > 0 }}"
+      - name: DRS buffering timeout
+        unique_id: drs_buffering_timeout
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_charge_status_raw') }}"
+        state: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(4096) > 0 }}"
+      - name: DRS CC stage timeout
+        unique_id: drs_cc_stage_timeout
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_charge_status_raw') }}"
+        state: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(8192) > 0 }}"
+      - name: DRS CV stage timeout
+        unique_id: drs_cv_stage_timeout
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_charge_status_raw') }}"
+        state: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(16384) > 0 }}"
+      - name: DRS float stage timeout
+        unique_id: drs_float_stage_timeout
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_charge_status_raw') }}"
+        state: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(32768) > 0 }}"
+
+      # SYSTEM_STATUS 0x00C3
+      - name: DRS DC OK
+        unique_id: drs_dc_ok
+        availability: "{{ has_value('sensor.drs_system_status_raw') }}"
+        state: "{{ states('sensor.drs_system_status_raw') | int(0) | bitwise_and(2) > 0 }}"
+      - name: DRS EEPROM error
+        unique_id: drs_eeprom_error
+        device_class: problem
+        availability: "{{ has_value('sensor.drs_system_status_raw') }}"
+        state: "{{ states('sensor.drs_system_status_raw') | int(0) | bitwise_and(64) > 0 }}"
+      # Bit 7 CHG/UPS, manual: 0 = charging mode, 1 = UPS mode (the load runs from the battery)
+      - name: DRS on battery
+        unique_id: drs_on_battery
+        availability: "{{ has_value('sensor.drs_system_status_raw') }}"
+        state: "{{ states('sensor.drs_system_status_raw') | int(0) | bitwise_and(128) > 0 }}"
+      # Modbus link: off when the DRS does not answer (unpowered after the cut-off, RS-485 or USB fault)
+      - name: DRS link
+        unique_id: drs_link
+        device_class: connectivity
+        delay_off: "00:00:30"
+        state: "{{ has_value('sensor.drs_system_status_raw') and has_value('sensor.drs_battery_current') }}"
+      # Output off without AC while the controller still answers: seen after the battery cut-off with the
+      # CN12 force-start link fitted. DC_OK off, AC fail on. The UPS-mode bit (drs_on_battery) drops to 0
+      # at the cut-off, so it is not an "AC is back" signal.
+      - name: DRS cut-off
+        unique_id: drs_cut_off
+        device_class: problem
+        icon: mdi:battery-off-outline
+        delay_on: "00:00:10"
+        availability: "{{ has_value('sensor.drs_fault_status_raw') and has_value('sensor.drs_system_status_raw') }}"
+        state: "{{ is_state('binary_sensor.drs_ac_fail', 'on') and is_state('binary_sensor.drs_dc_ok', 'off') }}"
+
+  # After a cut-off with the controller still powered (CN12 pins 7-8 linked), the tested unit charged the
+  # battery on AC but did not switch to it at the next outages until the battery was reconnected.
+  # Without the link only silent cut-offs were seen (no Modbus answer) and the backup worked after AC returned;
+  # this sensor stays off then.
+  # On after such a cut-off. Off when the DRS powers down (fresh start), the battery is re-detected (BTNC,
+  # for example fuse out and in), the load really runs from the battery, or on the event drs_backup_blocked_reset.
+  - triggers:
+      - trigger: state
+        entity_id: binary_sensor.drs_cut_off
+        to: "on"
+        id: blocked
+      - trigger: state
+        entity_id: binary_sensor.drs_link
+        to: "off"
+        for: "00:01:00"
+        id: clear
+      - trigger: template
+        value_template: "{{ states('sensor.drs_charge_status_raw') | int(0) | bitwise_and(2048) > 0 }}"
+        id: clear
+      - trigger: template
+        value_template: >-
+          {{ is_state('binary_sensor.drs_on_battery', 'on') and states('sensor.drs_battery_current') | float(0) < -0.3 }}
+        id: clear
+      # Manual reset (and first initialisation): fire the event drs_backup_blocked_reset
+      - trigger: event
+        event_type: drs_backup_blocked_reset
+        id: clear
+    binary_sensor:
+      - name: DRS backup blocked
+        unique_id: drs_backup_blocked
+        device_class: problem
+        icon: mdi:battery-lock
+        state: "{{ trigger.id == 'blocked' }}"
+
+  # Set by the automation drs_ac_alert: on between the "AC lost" and the "AC back" message
+  - triggers:
+      - trigger: event
+        event_type: drs_ac_outage_reported
+    binary_sensor:
+      - name: DRS AC outage reported
+        unique_id: drs_ac_outage_reported
+        icon: mdi:transmission-tower-off
+        state: "{{ trigger.event.data.open }}"
+        attributes:
+          since: "{{ trigger.event.data.since | default(none) }}"
+
+  # ---------- Battery state of charge (coulomb counter) ----------
+  # Every 10 s adds READ_IBAT x elapsed time (Ah, no rounding per step). Branches (attribute "branch"):
+  #   full    100 % from the end of a charge (FULLM or FVM with VBAT >= 13.9 V) while on AC.
+  #           In 2-stage mode FULLM means "the last charge cycle ended" and may stay set after an
+  #           outage, so FULLM alone does not re-anchor a partly drained battery
+  #   empty   0 % when discharging at VBAT <= max(BAT_UVP + 0.15, 10.8) V, or when the DRS went
+  #           silent during a discharge with VBAT <= BAT_UVP + 0.5 V (cut-off between two polls)
+  #   stale   no data from the DRS: value kept, last_ts kept so the gap is known later
+  #   count   normal step, or a gap up to 5 min (Home Assistant restart) counted at the present current;
+  #           |IBAT| < 0.1 A counts as 0 (READ_IBAT tolerance is +-0.2 A)
+  #   hold    gap > 5 min while charging (value kept as a lower bound until the next full anchor),
+  #           or any other gap up to 4 h with history (for example a DRS restart): value kept
+  #   bridge  gap > 5 min (up to 4 h) with discharge before and after: average of both currents
+  #   voltage no history (or a gap over 4 h): rough estimate from the rest-voltage table of the tested
+  #           battery (Offgridtec LiFePO4 manual, state-of-charge table), only when not charging. Meaningless on the LiFePO4
+  #           plateau, last resort only
+  #   unknown no history while charging or without data
+  # "calibrated" is true after a full or empty anchor and stays true while counting.
+  # The sticky full anchor and the calibration live in input_boolean helpers (drs_soc_flags keeps them
+  # in step with "branch") because template attributes do not survive a restart of Home Assistant.
+  # "i_avg" is the battery current averaged over about 5 min, used for the runtime.
+  - triggers:
+      - trigger: time_pattern
+        seconds: "/10"
+    sensor:
+      - name: DRS battery charge
+        unique_id: drs_battery_charge
+        unit_of_measurement: Ah
+        state_class: measurement
+        icon: mdi:battery-sync
+        state: >
+            {%- set cap = states('input_number.drs_battery_capacity') | float(50) -%}
+            {%- set v = states('sensor.drs_battery_voltage') | float(none) -%}
+            {%- set i = states('sensor.drs_battery_current') | float(none) -%}
+            {%- set cutoff = states('sensor.drs_set_battery_low_cutoff') | float(11.2) -%}
+            {%- set prev = this.state | float(none) -%}
+            {%- set last = this.attributes.get('last_ts') | float(none) -%}
+            {%- set lv = this.attributes.get('last_v') | float(99) -%}
+            {%- set li = this.attributes.get('last_i') | float(0) -%}
+            {%- set gap = ([as_timestamp(now()) - last, 0] | max) if last is not none else 0 -%}
+            {%- set full = (is_state('binary_sensor.drs_battery_full', 'on') or is_state('binary_sensor.drs_charge_stage_float', 'on'))
+                           and is_state('binary_sensor.drs_on_battery', 'off') and (i is none or i > -0.3)
+                           and (is_state('input_boolean.drs_soc_full_latched', 'on') or (v is not none and v >= 13.9)) -%}
+            {%- if full -%}{%- set b = 'full' -%}
+            {%- elif i is not none and v is not none and i < -0.05 and v <= [cutoff + 0.15, 10.8] | max -%}{%- set b = 'empty' -%}
+            {%- elif i is none -%}{%- set b = 'empty' if (prev is not none and li < -0.05 and lv <= cutoff + 0.5) else 'stale' -%}
+            {%- elif prev is not none and gap <= 300 -%}{%- set b = 'count' -%}
+            {%- elif prev is not none and i > 0.05 -%}{%- set b = 'hold' -%}
+            {%- elif prev is not none and li < -0.05 and i < -0.05 and gap <= 14400 -%}{%- set b = 'bridge' -%}
+            {%- elif prev is not none and gap <= 14400 -%}{%- set b = 'hold' -%}
+            {%- elif v is none or i > 0.05 -%}{%- set b = 'unknown' -%}
+            {%- else -%}{%- set b = 'voltage' -%}{%- endif -%}
+            {%- if b == 'full' -%}{{ cap }}
+            {%- elif b == 'empty' -%}0
+            {%- elif b in ['stale', 'hold'] -%}{{ prev }}
+            {%- elif b == 'count' -%}{{ ([0, prev + (i if i | abs >= 0.1 else 0) * gap / 3600, cap] | sort)[1] | round(6) }}
+            {%- elif b == 'bridge' -%}{{ ([0, prev + (li + i) / 2 * gap / 3600, cap] | sort)[1] | round(6) }}
+            {%- elif b == 'unknown' -%}{{ none }}
+            {%- else -%}
+              {%- set t = [[10.79, 0], [11.84, 1], [12.36, 10], [12.53, 20], [12.60, 30], [12.68, 40], [12.74, 50],
+                           [12.76, 60], [12.84, 70], [12.89, 80], [12.91, 90], [12.92, 99], [13.07, 100]] -%}
+              {%- set ns = namespace(soc=(0 if v <= t[0][0] else 100), done=(v <= t[0][0] or v >= t[-1][0])) -%}
+              {%- for k in range(1, t | length) -%}
+                {%- if not ns.done and v <= t[k][0] -%}
+                  {%- set ns.soc = t[k-1][1] + (t[k][1] - t[k-1][1]) * (v - t[k-1][0]) / (t[k][0] - t[k-1][0]) -%}
+                  {%- set ns.done = true -%}
+                {%- endif -%}
+              {%- endfor -%}
+              {{ (cap * ns.soc / 100) | round(6) }}
+            {%- endif -%}
+        attributes:
+          capacity_ah: "{{ states('input_number.drs_battery_capacity') | float(50) }}"
+          branch: >
+            {%- set v = states('sensor.drs_battery_voltage') | float(none) -%}
+            {%- set i = states('sensor.drs_battery_current') | float(none) -%}
+            {%- set cutoff = states('sensor.drs_set_battery_low_cutoff') | float(11.2) -%}
+            {%- set prev = this.state | float(none) -%}
+            {%- set last = this.attributes.get('last_ts') | float(none) -%}
+            {%- set lv = this.attributes.get('last_v') | float(99) -%}
+            {%- set li = this.attributes.get('last_i') | float(0) -%}
+            {%- set gap = ([as_timestamp(now()) - last, 0] | max) if last is not none else 0 -%}
+            {%- set full = (is_state('binary_sensor.drs_battery_full', 'on') or is_state('binary_sensor.drs_charge_stage_float', 'on'))
+                           and is_state('binary_sensor.drs_on_battery', 'off') and (i is none or i > -0.3)
+                           and (is_state('input_boolean.drs_soc_full_latched', 'on') or (v is not none and v >= 13.9)) -%}
+            {%- if full -%}{%- set b = 'full' -%}
+            {%- elif i is not none and v is not none and i < -0.05 and v <= [cutoff + 0.15, 10.8] | max -%}{%- set b = 'empty' -%}
+            {%- elif i is none -%}{%- set b = 'empty' if (prev is not none and li < -0.05 and lv <= cutoff + 0.5) else 'stale' -%}
+            {%- elif prev is not none and gap <= 300 -%}{%- set b = 'count' -%}
+            {%- elif prev is not none and i > 0.05 -%}{%- set b = 'hold' -%}
+            {%- elif prev is not none and li < -0.05 and i < -0.05 and gap <= 14400 -%}{%- set b = 'bridge' -%}
+            {%- elif prev is not none and gap <= 14400 -%}{%- set b = 'hold' -%}
+            {%- elif v is none or i > 0.05 -%}{%- set b = 'unknown' -%}
+            {%- else -%}{%- set b = 'voltage' -%}{%- endif -%}
+            {{ b }}
+          calibrated: >
+            {%- set v = states('sensor.drs_battery_voltage') | float(none) -%}
+            {%- set i = states('sensor.drs_battery_current') | float(none) -%}
+            {%- set cutoff = states('sensor.drs_set_battery_low_cutoff') | float(11.2) -%}
+            {%- set prev = this.state | float(none) -%}
+            {%- set last = this.attributes.get('last_ts') | float(none) -%}
+            {%- set lv = this.attributes.get('last_v') | float(99) -%}
+            {%- set li = this.attributes.get('last_i') | float(0) -%}
+            {%- set gap = ([as_timestamp(now()) - last, 0] | max) if last is not none else 0 -%}
+            {%- set full = (is_state('binary_sensor.drs_battery_full', 'on') or is_state('binary_sensor.drs_charge_stage_float', 'on'))
+                           and is_state('binary_sensor.drs_on_battery', 'off') and (i is none or i > -0.3)
+                           and (is_state('input_boolean.drs_soc_full_latched', 'on') or (v is not none and v >= 13.9)) -%}
+            {%- if full -%}{%- set b = 'full' -%}
+            {%- elif i is not none and v is not none and i < -0.05 and v <= [cutoff + 0.15, 10.8] | max -%}{%- set b = 'empty' -%}
+            {%- elif i is none -%}{%- set b = 'empty' if (prev is not none and li < -0.05 and lv <= cutoff + 0.5) else 'stale' -%}
+            {%- elif prev is not none and gap <= 300 -%}{%- set b = 'count' -%}
+            {%- elif prev is not none and i > 0.05 -%}{%- set b = 'hold' -%}
+            {%- elif prev is not none and li < -0.05 and i < -0.05 and gap <= 14400 -%}{%- set b = 'bridge' -%}
+            {%- elif prev is not none and gap <= 14400 -%}{%- set b = 'hold' -%}
+            {%- elif v is none or i > 0.05 -%}{%- set b = 'unknown' -%}
+            {%- else -%}{%- set b = 'voltage' -%}{%- endif -%}
+            {{ b in ['full', 'empty'] or (b in ['count', 'hold', 'bridge', 'stale'] and is_state('input_boolean.drs_soc_calibrated', 'on')) }}
+          last_ts: >
+            {%- set held = this.attributes.get('last_ts') -%}
+            {{ held if (states('sensor.drs_battery_current') | float(none) is none and held is not none) else as_timestamp(now()) }}
+          last_v: "{{ states('sensor.drs_battery_voltage') | float(this.attributes.get('last_v')) }}"
+          last_i: "{{ states('sensor.drs_battery_current') | float(this.attributes.get('last_i')) }}"
+          i_avg: >
+            {%- set i = states('sensor.drs_battery_current') | float(none) -%}
+            {%- set a = this.attributes.get('i_avg') | float(none) -%}
+            {%- set last = this.attributes.get('last_ts') | float(none) -%}
+            {%- set dt = ([0, as_timestamp(now()) - last, 300] | sort)[1] if last is not none else 300 -%}
+            {%- if i is none -%}{{ a }}
+            {%- elif a is none -%}{{ i }}
+            {%- else -%}{{ (a + (i - a) * dt / 300) | round(4) }}{%- endif -%}
+
+  - sensor:
+      - name: DRS battery SOC
+        unique_id: drs_battery_soc
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        availability: "{{ has_value('sensor.drs_battery_charge') }}"
+        state: >
+          {{ (states('sensor.drs_battery_charge') | float
+              / state_attr('sensor.drs_battery_charge', 'capacity_ah') | float(50) * 100) | round(0) }}
+        attributes:
+          calibrated: "{{ state_attr('sensor.drs_battery_charge', 'calibrated') }}"
+          branch: "{{ state_attr('sensor.drs_battery_charge', 'branch') }}"
+      # Remaining runtime at the larger discharge of the ~5 min average and the instant current: the average
+      # starts near 0 when AC is lost and would give hundreds of hours in the first minute.
+      # Unknown when not discharging or without link
+      - name: DRS battery runtime
+        unique_id: drs_battery_runtime
+        unit_of_measurement: h
+        device_class: duration
+        state_class: measurement
+        availability: "{{ has_value('sensor.drs_battery_charge') }}"
+        state: >
+          {% set i = [state_attr('sensor.drs_battery_charge', 'i_avg') | float(0), states('sensor.drs_battery_current') | float(0)] | min %}
+          {% if is_state('binary_sensor.drs_link', 'on') and is_state('binary_sensor.drs_on_battery', 'on') and i < -0.05 %}
+            {{ (states('sensor.drs_battery_charge') | float / -i) | round(2) }}
+          {% else %}
+            {{ none }}
+          {% endif %}
+      # Same runtime as text for badges and tiles, for example "7 h 53 min"
+      - name: DRS battery runtime text
+        unique_id: drs_battery_runtime_text
+        icon: mdi:timer-sand
+        availability: "{{ has_value('sensor.drs_battery_charge') }}"
+        state: >
+          {% set i = [state_attr('sensor.drs_battery_charge', 'i_avg') | float(0), states('sensor.drs_battery_current') | float(0)] | min %}
+          {% if is_state('binary_sensor.drs_link', 'on') and is_state('binary_sensor.drs_on_battery', 'on') and i < -0.05 %}
+            {% set m = (states('sensor.drs_battery_charge') | float / -i * 60) | round(0) | int %}
+            {{ m // 60 }} h {{ '%02d' | format(m % 60) }} min
+          {% else %}
+            {{ none }}
+          {% endif %}
+
+      # Time text for the battery tile in every mode: runtime on battery, time to full while charging
+      - name: DRS battery time text
+        unique_id: drs_battery_time_text
+        icon: mdi:timer-sand
+        state: >
+          {% set ch = 'sensor.drs_battery_charge' %}
+          {% set i = state_attr(ch, 'i_avg') | float(0) %}
+          {% set q = states(ch) | float(none) %}
+          {% set cap = state_attr(ch, 'capacity_ah') | float(50) %}
+          {% if not is_state('binary_sensor.drs_link', 'on') %}no data
+          {% elif is_state('binary_sensor.drs_cut_off', 'on') %}output off, waiting for AC
+          {% elif is_state('binary_sensor.drs_on_battery', 'on') %}
+            {% if has_value('sensor.drs_battery_runtime_text') %}{{ states('sensor.drs_battery_runtime_text') }} left{% else %}on battery{% endif %}
+          {% elif state_attr(ch, 'branch') == 'full' %}on AC, battery full
+          {% elif states('sensor.drs_battery_current') | float(0) < -0.3 %}on AC, but the battery is discharging
+          {% elif i > 0.1 and q is not none %}
+            {% set m = ((cap - q) / i * 60) | round(0) | int %}full in about {{ m // 60 }} h {{ '%02d' | format(m % 60) }} min
+          {% else %}on AC{% endif %}
+
+      # Curve in use, decoded from CURVE_CONFIG (STGS bit 6 = DIP 1, CUVS bits 0-1 = DIP 2/3).
+      # The CURVE_CV/FV registers keep the programmable values and do not show a DIP preset.
+      # Voltages are those of the 12 V model.
+      - name: DRS active curve
+        unique_id: drs_active_curve
+        icon: mdi:chart-bell-curve-cumulative
+        availability: "{{ has_value('sensor.drs_set_curve_config_raw') }}"
+        state: >
+          {%- set raw = states('sensor.drs_set_curve_config_raw') | int(0) -%}
+          {%- set c = [['default curve', '14.4', '13.8'], ['gel preset', '14.0', '13.6'],
+                       ['flooded preset', '14.2', '13.4'], ['AGM/LiFePO4 preset', '14.6', '14.0']][raw | bitwise_and(3)] -%}
+          {%- if raw | bitwise_and(64) -%}2-stage, {{ c[0] }}: boost {{ c[1] }} V, no float
+          {%- else -%}3-stage, {{ c[0] }}: boost {{ c[1] }} V, float {{ c[2] }} V{%- endif -%}
+
+  # ---------- Settings reference: off when the unit's settings differ from "ref" ----------
+  # For example after a factory reset (Battery Start pressed 5 times). The attribute "mismatch" lists the
+  # differences. "ref" below is the configuration from the guide on a unit with factory settings: 2-stage,
+  # flooded preset, cut-off 11.20 V, everything else as delivered. Change it to your own in BOTH places.
+  # docs/home-assistant-setup.md explains each value.
+  - binary_sensor:
+      - name: DRS settings OK
+        unique_id: drs_settings_ok
+        icon: mdi:tune-variant
+        availability: "{{ has_value('sensor.drs_set_charge_current') }}"
+        state: >
+          {%- set ref = {'charge_current': 15.4, 'boost_voltage': 14.4, 'float_voltage': 13.8, 'taper_current': 1.54,
+                         'curve_config_raw': 198, 'cc_timeout': 600, 'battery_low_cutoff': 11.2, 'ups_config_raw': 9,
+                         'system_config_raw': 2, 'operation': 1, 'output_voltage': 12.0, 'ac_fail_high_line': 171.6, 'ac_ok_high_line': 182.6} -%}
+          {%- set ns = namespace(ok=true) -%}
+          {%- for k, r in ref.items() -%}
+            {%- if (states('sensor.drs_set_' ~ k) | float(-1) - r) | abs > 0.005 -%}{%- set ns.ok = false -%}{%- endif -%}
+          {%- endfor -%}
+          {{ ns.ok }}
+        attributes:
+          mismatch: >
+            {%- set ref = {'charge_current': 15.4, 'boost_voltage': 14.4, 'float_voltage': 13.8, 'taper_current': 1.54,
+                           'curve_config_raw': 198, 'cc_timeout': 600, 'battery_low_cutoff': 11.2, 'ups_config_raw': 9,
+                           'system_config_raw': 2, 'operation': 1, 'output_voltage': 12.0, 'ac_fail_high_line': 171.6, 'ac_ok_high_line': 182.6} -%}
+            {%- set ns = namespace(m=[]) -%}
+            {%- for k, r in ref.items() -%}
+              {%- set v = states('sensor.drs_set_' ~ k) | float(-1) -%}
+              {%- if (v - r) | abs > 0.005 -%}{%- set ns.m = ns.m + [k ~ ' ' ~ v ~ ' (ref ' ~ r ~ ')'] -%}{%- endif -%}
+            {%- endfor -%}
+            {{ ns.m | join(', ') }}
+
+script:
+  # ---------- Where alerts go ----------
+  # Every alert below calls this script. Out of the box it creates a notification in the Home Assistant UI.
+  # To send alerts somewhere else as well, add a second action, for example notify.mobile_app_<your_phone>.
+  # docs/home-assistant-setup.md, step 6, shows the block.
+  drs_notify:
+    alias: DRS notify
+    mode: queued
+    max: 10
+    fields:
+      title:
+        description: Short title of the alert
+        example: "DRS-240: low battery"
+        selector:
+          text:
+      message:
+        description: Text of the alert
+        required: true
+        selector:
+          text:
+            multiline: true
+    sequence:
+      - action: notify.persistent_notification
+        data:
+          title: "{{ title | default('DRS-240') }}"
+          message: "{{ message }}"
+
+  # ---------- Register write with a whitelist (function code 06) ----------
+  # Only charge-curve, battery-protection, UPS and AC-threshold registers within the raw ranges below
+  # (12 V model). OPERATION (0), VOUT_SET (32) and SYSTEM_CONFIG (196) are refused: a wrong value there
+  # can switch the output off, and you cannot undo that remotely if your network runs from the DRS.
+  # The DRS stores settings in its EEPROM: write by hand, never from a frequent automation.
+  drs_write_register:
+    alias: DRS write register
+    mode: single
+    fields:
+      address:
+        description: Register address in decimal (whitelisted only)
+        example: 208
+        required: true
+        selector:
+          number: {min: 0, max: 255, mode: box}
+      value:
+        description: Raw register value (range-checked)
+        example: 1120
+        required: true
+        selector:
+          number: {min: 0, max: 65535, mode: box}
+    variables:
+      allowed: >
+        {% set lim = {176: [400, 800], 177: [1380, 1460], 178: [1340, 1380], 179: [40, 200],
+                      181: [60, 1440], 182: [60, 1440], 183: [60, 1440],
+                      208: [1050, 1200], 209: [1000, 1200], 210: [0, 63],
+                      224: [820, 1200], 225: [1320, 1820], 226: [870, 1250], 227: [1370, 1870],
+                      228: [60, 64800], 232: [60, 300], 233: [0, 60]} %}
+        {% set a = address | int(-1) %}{% set v = value | int(-1) %}
+        {% if a == 180 %}
+          {{ v in [128, 192, 1920] }}
+        {% else %}
+          {{ a in lim and lim[a][0] <= v <= lim[a][1] }}
+        {% endif %}
+    sequence:
+      - if: "{{ not allowed }}"
+        then:
+          - stop: "DRS: register or value outside the whitelist"
+            error: true
+      - action: modbus.write_register
+        data:
+          hub: drs240
+          slave: *drs_slave
+          address: "{{ address | int }}"
+          value: "{{ value | int }}"
+
+# ---------- Alerts ----------
+automation:
+  # AC lost / AC back. "Lost" needs 5 min without AC, so short flickers stay quiet.
+  # "Back" follows only a reported "lost", then waits up to 15 min to say whether the charge started.
+  - id: drs_ac_alert
+    alias: DRS AC alert
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.drs_ac_fail
+        from: "off"
+        to: "on"
+        for: "00:05:00"
+        id: lost
+      - trigger: state
+        entity_id: binary_sensor.drs_ac_fail
+        from: "on"
+        to: "off"
+        for: "00:01:00"
+        id: back
+    conditions:
+      - condition: template
+        value_template: >-
+          {% set open = is_state('binary_sensor.drs_ac_outage_reported', 'on') %}
+          {% if trigger.id == 'lost' %}{{ not open }}
+          {% else %}{{ open and not is_state('binary_sensor.drs_ac_fail', 'on') }}{% endif %}
+    actions:
+      - choose:
+          - conditions: "{{ trigger.id == 'lost' }}"
+            sequence:
+              - event: drs_ac_outage_reported
+                event_data:
+                  open: true
+                  since: "{{ (now() - timedelta(minutes=5)).isoformat() }}"
+              - action: script.drs_notify
+                data:
+                  title: "DRS-240: no AC power"
+                  message: >-
+                    No AC power for 5 min.
+                    {{ 'Running on battery' if is_state('binary_sensor.drs_dc_ok', 'on') else 'The output is off, the DRS did not switch to the battery' }},
+                    SOC {{ states('sensor.drs_battery_soc') }}%
+                    ({{ 'counted' if state_attr('sensor.drs_battery_charge', 'calibrated') == true else 'rough estimate' }}),
+                    about {{ states('sensor.drs_battery_runtime_text') }} left.
+                    Battery {{ states('sensor.drs_battery_voltage') }} V, load {{ states('sensor.drs_output_current') }} A.
+                    {% if states('sensor.drs_battery_soc') | float(0) < 50 %}Warning: the battery was less than half full.
+                    {% elif state_attr('sensor.drs_battery_charge', 'calibrated') != true %}Warning: the SOC is a rough voltage estimate.{% endif %}
+        default:
+          - variables:
+              since: "{{ state_attr('binary_sensor.drs_ac_outage_reported', 'since') }}"
+              outage_s: >-
+                {% set s = as_datetime(since, none) %}
+                {{ ((now() - s).total_seconds() | int) if s is not none else -1 }}
+          - event: drs_ac_outage_reported
+            event_data:
+              open: false
+          - wait_template: >-
+              {{ states('sensor.drs_battery_current') | float(0) > 0.5 or is_state('binary_sensor.drs_ac_fail', 'on') }}
+            timeout: "00:15:00"
+            continue_on_timeout: true
+          - action: script.drs_notify
+            data:
+              title: "DRS-240: AC power is back"
+              message: >-
+                {% set d = outage_s | int %}
+                AC power is back{% if d >= 0 %} after about {{ d // 3600 }} h {{ '%02d' | format(d % 3600 // 60) }} min{% endif %}.
+                SOC {{ states('sensor.drs_battery_soc') }}%,
+                {% if is_state('binary_sensor.drs_ac_fail', 'on') %}AC has failed again.
+                {% elif states('sensor.drs_battery_current') | float(0) > 0.5 %}charging at {{ states('sensor.drs_battery_current') }} A.
+                {% else %}no charge started within 15 min (battery current {{ states('sensor.drs_battery_current') }} A).{% endif %}
+                {% if is_state('binary_sensor.drs_backup_blocked', 'on') %}Warning: the battery backup may not work after the cut-off.{% endif %}
+
+  - id: drs_low_battery
+    alias: DRS low battery
+    mode: queued
+    max: 4
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.drs_battery_soc
+        below: 30
+        id: soc30
+      - trigger: numeric_state
+        entity_id: sensor.drs_battery_soc
+        below: 15
+        id: soc15
+      - trigger: numeric_state
+        entity_id: sensor.drs_battery_runtime
+        below: 1
+        id: rt1
+      - trigger: numeric_state
+        entity_id: sensor.drs_battery_voltage
+        below: 11.6
+        for: "00:02:00"
+        id: v116
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.drs_on_battery
+        state: "on"
+      # A reload makes the sensor unavailable for a moment; coming back below the limit is not a crossing
+      - condition: template
+        value_template: "{{ trigger.from_state is not none and trigger.from_state.state not in ['unavailable', 'unknown'] }}"
+    actions:
+      - action: script.drs_notify
+        data:
+          title: "DRS-240: low battery"
+          message: >-
+            {{ {'soc30': 'State of charge below 30%', 'soc15': 'State of charge below 15%', 'rt1': 'Less than 1 hour left',
+                'v116': 'Battery below 11.6 V'}[trigger.id] }}.
+            SOC {{ states('sensor.drs_battery_soc') }}%
+            ({{ 'counted' if state_attr('sensor.drs_battery_charge', 'calibrated') == true else 'rough estimate' }}),
+            about {{ states('sensor.drs_battery_runtime_text') }} left, battery {{ states('sensor.drs_battery_voltage') }} V.
+            At the cut-off the DRS output switches off until AC returns.
+
+  - id: drs_link_lost
+    alias: DRS link lost
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.drs_link
+        from: "on"
+        to: "off"
+        for: "00:02:00"
+    actions:
+      - action: script.drs_notify
+        data:
+          title: "DRS-240: no Modbus link"
+          message: >-
+            {% set lv = state_attr('sensor.drs_battery_charge', 'last_v') | float(99) %}
+            {% set cutoff = states('sensor.drs_set_battery_low_cutoff') | float(11.2) %}
+            The DRS has not answered for 2 min.
+            {% if lv <= cutoff + 0.5 %}Most likely the battery cut-off (last battery voltage {{ lv }} V).
+            {% else %}The unit has no power or the RS-485 link is broken (last battery voltage {{ lv }} V).{% endif %}
+
+  - id: drs_link_back
+    alias: DRS link back
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.drs_link
+        from: "off"
+        to: "on"
+    actions:
+      - delay: "00:00:20"
+      - action: script.drs_notify
+        data:
+          title: "DRS-240: Modbus link is back"
+          message: >-
+            The DRS answers again.
+            AC is {{ 'missing' if is_state('binary_sensor.drs_ac_fail', 'on') else 'present' }},
+            battery {{ states('sensor.drs_battery_voltage') }} V, {{ states('sensor.drs_battery_current') }} A,
+            SOC {{ states('sensor.drs_battery_soc') }}%.
+
+  - id: drs_fault
+    alias: DRS fault
+    mode: queued
+    max: 10
+    triggers:
+      - trigger: state
+        entity_id:
+          - binary_sensor.drs_overload
+          - binary_sensor.drs_short_circuit
+          - binary_sensor.drs_output_over_voltage
+          - binary_sensor.drs_over_temperature
+          - binary_sensor.drs_high_ambient_temperature
+          - binary_sensor.drs_eeprom_error
+          - binary_sensor.drs_no_battery_detected
+          - binary_sensor.drs_ntc_sensor_shorted
+          - binary_sensor.drs_cc_stage_timeout
+          - binary_sensor.drs_cv_stage_timeout
+          # drs_float_stage_timeout is the normal end of float in 3-stage mode, not a fault
+        from: "off"
+        to: "on"
+        for: "00:00:30"
+        id: flag
+      - trigger: state
+        entity_id: binary_sensor.drs_charge_stage_cc
+        to: "on"
+        for: "12:00:00"
+        id: cc_long
+      - trigger: state
+        entity_id: binary_sensor.drs_charge_stage_cv
+        to: "on"
+        for: "04:00:00"
+        id: cv_long
+      - trigger: numeric_state
+        entity_id: sensor.drs_internal_temperature
+        above: 70                   # about 63 °C was the highest seen while charging at 6 A with a 2.6 A load
+        for: "00:05:00"
+        id: hot
+      - trigger: numeric_state
+        entity_id: sensor.drs_output_voltage
+        above: 14.7                 # 14.2 to 14.4 V is normal after a 2-stage charge; the tested battery allows 14.6 V
+        for: "00:01:00"
+        id: vout_high
+      - trigger: state
+        entity_id: sensor.drs_set_operation
+        to: "0"
+        id: op_off
+      - trigger: state
+        entity_id: binary_sensor.drs_settings_ok
+        from: "on"
+        to: "off"
+        for: "00:10:00"
+        id: settings
+    actions:
+      - action: script.drs_notify
+        data:
+          title: "DRS-240: fault"
+          message: >-
+            {% if trigger.id == 'flag' %}{{ trigger.to_state.name }}
+            {%- elif trigger.id == 'cc_long' %}The CC stage has been running for more than 12 h
+            {%- elif trigger.id == 'cv_long' %}The CV stage has been running for more than 4 h
+            {%- elif trigger.id == 'hot' %}Internal temperature {{ states('sensor.drs_internal_temperature') }} °C
+            {%- elif trigger.id == 'vout_high' %}Output voltage {{ states('sensor.drs_output_voltage') }} V (above 14.7 V)
+            {%- elif trigger.id == 'op_off' %}The output was switched off by command (OPERATION = 0)
+            {%- else %}The settings of the unit changed: {{ state_attr('binary_sensor.drs_settings_ok', 'mismatch') }}{% endif %}.
+            Battery {{ states('sensor.drs_battery_voltage') }} V, {{ states('sensor.drs_battery_current') }} A.
+
+  - id: drs_discharge_on_ac
+    alias: DRS discharge on AC
+    mode: single
+    triggers:
+      # 20 min: longer than the start-up phase in which the unit can show CC while the battery still discharges
+      - trigger: template
+        value_template: >-
+          {{ is_state('binary_sensor.drs_link', 'on') and is_state('binary_sensor.drs_ac_fail', 'off')
+             and states('sensor.drs_battery_current') | float(0) < -0.3 }}
+        for: "00:20:00"
+    actions:
+      - action: script.drs_notify
+        data:
+          title: "DRS-240: battery discharging on AC"
+          message: >-
+            AC is present, but the battery is feeding the load.
+            Battery {{ states('sensor.drs_battery_voltage') }} V, {{ states('sensor.drs_battery_current') }} A,
+            SOC {{ states('sensor.drs_battery_soc') }}%, CHG_STATUS {{ states('sensor.drs_charge_status_raw') }}.
+            On the tested unit a 10 to 20 s interruption of the AC input restarted the charge.
+
+  # Alert when a part-charged battery stays uncharged on AC, or when the unit reports CC/CV
+  # but no current flows (the BMS blocks the charge)
+  - id: drs_not_recharging
+    alias: DRS not recharging
+    mode: single
+    triggers:
+      - trigger: template
+        value_template: >-
+          {{ is_state('binary_sensor.drs_link', 'on') and is_state('binary_sensor.drs_ac_fail', 'off')
+             and is_state('binary_sensor.drs_charge_stage_cc', 'off') and is_state('binary_sensor.drs_charge_stage_cv', 'off')
+             and (states('sensor.drs_battery_soc') | float(100) < 90 or states('sensor.drs_battery_voltage') | float(99) < 13.0) }}
+        for: "01:00:00"
+        id: idle
+      - trigger: template
+        value_template: >-
+          {{ is_state('binary_sensor.drs_link', 'on') and is_state('binary_sensor.drs_ac_fail', 'off')
+             and (is_state('binary_sensor.drs_charge_stage_cc', 'on') or is_state('binary_sensor.drs_charge_stage_cv', 'on'))
+             and states('sensor.drs_battery_current') | float(0) | abs < 0.3 }}
+        for: "00:30:00"
+        id: blocked
+    actions:
+      - action: script.drs_notify
+        data:
+          title: "DRS-240: battery not recharging"
+          message: >-
+            {{ 'AC is present, but the battery has not been charged for 1 h' if trigger.id == 'idle'
+               else 'The DRS shows a charge stage, but no current has flowed into the battery for 30 min (is the BMS blocking the charge, for example because of cold?)' }}.
+            SOC {{ states('sensor.drs_battery_soc') }}%, battery {{ states('sensor.drs_battery_voltage') }} V,
+            {{ states('sensor.drs_battery_current') }} A, CHG_STATUS {{ states('sensor.drs_charge_status_raw') }}.
+
+  # Keeps the restorable SOC flags in step with the counter's branch (stale and hold keep the full anchor)
+  - id: drs_soc_flags
+    alias: DRS SOC flags
+    mode: queued
+    max: 5
+    triggers:
+      - trigger: state
+        entity_id: sensor.drs_battery_charge
+        attribute: branch
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.to_state is not none and trigger.to_state.attributes.branch is defined }}"
+    actions:
+      - variables:
+          b: "{{ trigger.to_state.attributes.branch }}"
+      - if: "{{ b == 'full' }}"
+        then:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.drs_soc_full_latched
+        else:
+          - if: "{{ b not in ['stale', 'hold'] }}"
+            then:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: input_boolean.drs_soc_full_latched
+      - if: "{{ b in ['full', 'empty'] }}"
+        then:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.drs_soc_calibrated
+      - if: "{{ b in ['voltage', 'unknown'] }}"
+        then:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.drs_soc_calibrated

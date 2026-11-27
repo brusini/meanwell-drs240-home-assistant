@@ -1,0 +1,50 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  yaml:
+    name: yamllint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install yamllint
+      - run: yamllint .
+
+  markdown:
+    name: markdownlint and links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npx --yes markdownlint-cli2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python .github/scripts/check_links.py
+
+  home-assistant:
+    name: Home Assistant configuration check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build a minimal configuration around the packages
+        run: |
+          mkdir -p ci-config/packages
+          cp homeassistant/packages/*.yaml ci-config/packages/
+          printf "homeassistant:\n  packages: !include_dir_named packages\n" > ci-config/configuration.yaml
+      - name: Check it with the current stable Home Assistant
+        run: |
+          docker run --rm -v "$PWD/ci-config:/config" ghcr.io/home-assistant/home-assistant:stable \
+            python -m homeassistant --script check_config --config /config

@@ -1,0 +1,67 @@
+# Optional: cold alert for a LiFePO4 battery on the DRS-240
+# Guide: docs/state-of-charge-and-alerts.md in https://github.com/brusini/meanwell-drs240-home-assistant
+#
+# Needs drs240.yaml (script.drs_notify and the DRS sensors) and any temperature sensor fixed to the battery case.
+# Why: many LiFePO4 batteries stop charging below 0 °C. The battery management system (BMS) of the tested
+# battery resumes charging only above +5 °C. The DRS cannot see this without its NTC sensor, and the NTC
+# is meant for lead-acid temperature compensation only.
+#
+# One message per level: "cold" below +5 °C for 30 min, "frozen" below +1 °C for 30 min (just before the
+# BMS stops the charge), "ok" only after one of them, above +7 °C for 1 h.
+# Check the limits of your own battery and change the three thresholds if they differ.
+
+template:
+  - triggers:
+      - trigger: event
+        event_type: drs_battery_cold_reported
+    sensor:
+      - name: DRS battery cold reported
+        unique_id: drs_battery_cold_reported
+        icon: mdi:snowflake-thermometer
+        state: "{{ trigger.event.data.level }}"
+
+automation:
+  - id: drs_battery_cold
+    alias: DRS battery cold
+    mode: queued
+    triggers:
+      - trigger: numeric_state
+        # SET ME: the entity ID of the temperature sensor on your battery. The other two triggers reuse it.
+        entity_id: &drs_battery_temp sensor.battery_temperature
+        below: 5
+        for: "00:30:00"
+        id: cold
+      - trigger: numeric_state
+        entity_id: *drs_battery_temp
+        below: 1
+        for: "00:30:00"
+        id: frozen
+      - trigger: numeric_state
+        entity_id: *drs_battery_temp
+        above: 7
+        for: "01:00:00"
+        id: warm
+    conditions:
+      - condition: template
+        value_template: >-
+          {% set level = states('sensor.drs_battery_cold_reported') %}
+          {% if trigger.id == 'cold' %}{{ level not in ['cold', 'frozen'] }}
+          {% elif trigger.id == 'frozen' %}{{ level != 'frozen' }}
+          {% else %}{{ level in ['cold', 'frozen'] }}{% endif %}
+    actions:
+      - event: drs_battery_cold_reported
+        event_data:
+          level: "{{ 'ok' if trigger.id == 'warm' else trigger.id }}"
+      - action: script.drs_notify
+        data:
+          title: "DRS-240: battery temperature"
+          message: >-
+            {% set t = states(trigger.entity_id) | float(0) | round(1) %}
+            {% set ac = 'AC is missing' if is_state('binary_sensor.drs_ac_fail', 'on') else 'AC is present' %}
+            {% if trigger.id == 'cold' %}The battery has been at {{ t }} °C for 30 min ({{ ac }}).
+            Below 0 °C the BMS stops charging and resumes only above +5 °C. Discharging still works.
+            SOC {{ states('sensor.drs_battery_soc') }}%.
+            {% elif trigger.id == 'frozen' %}The battery has been at {{ t }} °C for 30 min ({{ ac }}).
+            At 0 °C the BMS stops charging: after an outage the battery will not recharge until it is above +5 °C.
+            SOC {{ states('sensor.drs_battery_soc') }}%.
+            {% else %}The battery is back at {{ t }} °C. The BMS can charge it again.{% endif %}
