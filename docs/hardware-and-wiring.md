@@ -34,7 +34,7 @@ The photo shows the tested unit as delivered, with the DIP switches in the facto
 | Three LEDs | `DC OK`, `AC Fail`, `Status` | See [Operating modes](operating-modes.md#leds-and-relay-contacts) |
 | RJ45 socket | `Communication Port (RJ45)` | RS-485 for Modbus. It isn't Ethernet |
 | Push button | `Battery Start` | Starts the unit from the battery. Read [the warning](operating-modes.md#the-battery-start-button) before you press it |
-| Knob | `Charging Current Adj.` | Sets the charge current. It's the only thing that does |
+| Knob | `Charging Current Adj.` | Sets the charge current. On the tested unit it's the only thing that does |
 | DIP switches, 3 | `ON`, `1 2 3` | Charge curve: 2 or 3 stages, and the preset |
 | Battery terminal, 4 positions | `BAT-`, `BAT+` | Two positions for each pole |
 | AC input terminal, 3 positions | earth symbol, `N`, `L` | AC power, 90 VAC to 305 VAC (section 2.3). The nameplate says 100–277 VAC |
@@ -83,7 +83,7 @@ How to size the fuse:
 On the tested system the load stayed below 4.4 A and the charge current was set to about 6.1 A, so a 10 A fuse on 2.5 mm² wire had enough margin.
 
 > [!WARNING]
-> Pulling the battery fuse during an outage switches your loads off. With AC present, the tested unit reported a missing battery when the fuse was pulled, and started a charge when it was put back. Keep the time without a battery short: by the manual, a unit without a battery repeats its [wake-up](operating-modes.md#start-up-and-wake-up), which moves the output voltage.
+> Pulling the battery fuse during an outage switches your loads off. With AC present, the tested unit reported a missing battery when the fuse was pulled, and started a charge when it was put back. Keep the time without a battery short: Mean Well describes a [wake-up](operating-modes.md#start-up-and-wake-up) that repeats while no battery is connected, and it moves the output voltage.
 
 ## DC output and loads
 

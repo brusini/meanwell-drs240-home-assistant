@@ -13,7 +13,7 @@ This page documents how the DRS-240 setup in this guide was tested, what the tes
 | AC power | Switched by hand, later by a smart relay | A grid with frequent outages |
 | Recording | Home Assistant recorder, one sample every 5 to 10 seconds | The same |
 
-The configuration changed during the bench tests. The final configuration, described in [LiFePO4 charging](lifepo4-charging.md#the-configuration-that-worked), was tested from October 26. Results from before that date are marked, and so is everything measured with the force-start pins linked.
+The configuration changed during the bench tests. The final configuration, described in [LiFePO4 charging](lifepo4-charging.md#the-configuration-that-worked), was tested from October 26. Results from before that date carry their date. [LiFePO4 charging](lifepo4-charging.md#what-was-measured) says which of them were measured with the force-start pins linked.
 
 The alerts that ran during these tests are earlier versions of the ones in the package, with different message texts and a chat app as the destination. Their logic was refined along the way: the runtime estimate and the handling of the cut-off changed between the two discharges, and the AC power alert got its 5-minute delay later, on site. The alert times of the first discharge come from the earlier version.
 
@@ -76,7 +76,9 @@ The first two weeks on site, about 315 hours, from the Home Assistant recorder:
 | Internal temperature | 25°C to 48°C |
 | Charge restarts after an outage | 67 of 69. By load: 38 of 38 at 2 A or more, 29 of 31 below 2 A. By length of the outage: 19 of 19 above 30 seconds, 48 of 50 at 30 seconds or less |
 
-How the outages were counted: an outage is a period with the `AC_FAIL` bit set, sampled every 5 seconds. "Recharged" means a battery current above 0.5 A within 60 seconds after AC returned. Only the 69 outages that were followed by at least 2 minutes of AC count for the restart statistics. In a burst of interruptions, the next outage arrives before the charge can be judged.
+How the outages were counted: an outage is a period with the `AC_FAIL` bit set, sampled every 5 seconds. "Recharged" means that the battery current was above 0.5 A within 60 seconds after AC returned. Only the 69 outages that were followed by at least 2 minutes of AC count for the restart statistics. In a burst of interruptions, the next outage arrives before the charge can be judged.
+
+The count starts when the installation was finished. During the installation session itself, with AC being switched by hand, the "CC but discharging" state appeared twice more, after interruptions of 10 and 30 seconds at a load of about 1.5 A. Both were cleared by the next interruption within minutes.
 
 ## What wasn't tested
 

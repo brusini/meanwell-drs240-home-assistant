@@ -116,7 +116,7 @@ If it stays off:
 | `boost_voltage`, `float_voltage` | 14.4, 13.8 | 14.4, 13.8 | Put the values read into the reference. With a DIP preset they aren't used |
 | `taper_current` | 1.54 | 1.54 | Put the value read into the reference. The register has no effect |
 | `curve_config_raw` | 198 | 194 | Check the DIP switches first. 198 and 194 are both 2-stage with the flooded preset, with and without temperature compensation. See [CURVE_CONFIG](modbus-register-map.md#curve_config-address-180-0x00b4) |
-| `cc_timeout` | 600 | 900 | Put the value read into the reference. Raise the register only if your charge takes close to 10 hours |
+| `cc_timeout` | 600 | 900 | Put the value read into the reference. Raise the register if a full charge of your battery takes more than about 8 hours |
 | `battery_low_cutoff` | 11.2 | 11.2 | Write the cut-off you chose, and put the same value into the reference |
 | `ups_config_raw` | 9 | 8 | Put the value read into the reference. 9 is the factory value |
 | `system_config_raw` | 2 | 2 | 2 means the output switches on at power-up. If yours differs, find out why before you rely on the unit |

@@ -26,7 +26,7 @@ flowchart TD
     B -- no --> C{Discharging near the cut-off voltage?}
     C -- yes --> EMPTY[empty: value = 0]
     C -- no --> D{Data from the DRS?}
-    D -- no --> STALE[stale: keep the value]
+    D -- no --> STALE["stale: keep the value, or empty if the unit went silent near the cut-off"]
     D -- yes --> E{Last update less than 5 minutes ago?}
     E -- yes --> COUNT[count: add current × time]
     E -- no --> F{What happened during the gap?}
@@ -92,7 +92,7 @@ All alerts call `script.drs_notify`. The thresholds are in the package and are e
 | **Low battery** (`drs_low_battery`) | On battery, and the SOC falls below 30%, then below 15%, the runtime falls below 1 hour, or the battery stays below 11.6 V for 2 minutes | Warns you before the cut-off. The voltage trigger works even if the counter is wrong | Reduce the load, or prepare for the output to switch off |
 | **No Modbus link** (`drs_link_lost`) | The DRS hasn't answered for 2 minutes | If the last battery voltage was near the cut-off, the message says the cut-off is the likely cause. Otherwise it points to the power or the cable | After a cut-off: wait for AC. Otherwise check the adapter and the cable |
 | **Modbus link is back** (`drs_link_back`) | The DRS answers again | After a cut-off, this is the message that tells you the unit is running again. In that case no "AC power is back" message follows | Nothing |
-| **Fault** (`drs_fault`) | A fault flag is set for 30 seconds: overload, short circuit, over-voltage, over temperature, EEPROM error, no battery, NTC shorted, CC or CV timeout | The unit reports a problem | See [Troubleshooting](troubleshooting.md) |
+| **Fault** (`drs_fault`) | A fault flag is set for 30 seconds: overload, short circuit, over-voltage, over temperature, high ambient temperature, EEPROM error, no battery, NTC shorted, CC or CV timeout | The unit reports a problem | See [Troubleshooting](troubleshooting.md) |
 | **Fault** | The CC stage runs longer than 12 hours, or the CV stage longer than 4 hours | A charge that doesn't finish. A full charge of the tested battery takes about 8.3 hours | Check the battery and the charge current |
 | **Fault** | The internal temperature is above 70°C for 5 minutes | The highest value in the tests was 62.6°C | Improve the airflow or reduce the charge current |
 | **Fault** | The output is above 14.7 V for 1 minute | Protects the loads and the battery. 14.2 V to 14.4 V is normal | Check the DIP switches |
@@ -159,7 +159,7 @@ To use it, go to **Developer tools** > **Actions**, choose **DRS write register*
 The ranges are for the 12 V model and for the tested battery. If you narrow or widen them, do it in the `lim` list in the script.
 
 > [!WARNING]
-> A whitelist isn't a safety guarantee. `UPS_CONFIG` bits 2, 4, and 5 switch the output off on battery under conditions you set. And every write goes to the EEPROM of the unit. Write once, by hand, and check the result.
+> A whitelist isn't a safety guarantee. `UPS_CONFIG` bits 2, 4, and 5 turn on timers that switch the output off on battery. And every write goes to the EEPROM of the unit. Write once, by hand, and check the result.
 
 ## Adapt the package to another battery
 
@@ -171,6 +171,7 @@ The package was tuned for a 12.8 V, 50 Ah LiFePO4 battery charged to 14.2 V with
 | 13.9 V | `drs_battery_charge`, three times in the line that starts with `and (is_state('input_boolean.drs_soc_full_latched'` | Minimum battery voltage for the full point. Must be below your boost voltage and above the resting voltage of a partly charged battery |
 | 10.8 V and +0.15 V | `drs_battery_charge`, three times in the line that contains `[cutoff + 0.15, 10.8]` | Floor and margin of the empty point, relative to the cut-off voltage read from the unit. Change all three the same way |
 | 11.2 V | `float(11.2)`, wherever the cut-off is read | Fallback while the cut-off setting hasn't been read yet |
+| +0.5 V | `cutoff + 0.5`, in `drs_battery_charge` (three times), in the message of `drs_link_lost`, and in the dashboard | How close to the cut-off the last reading must be for a silent unit to count as cut off |
 | Rest-voltage table | `drs_battery_charge`, the list that starts with `[[10.79, 0]` | Fallback estimate for the `voltage` branch. It's the table of the tested battery |
 | 30%, 15%, 1 hour, 11.6 V | Automation `drs_low_battery` | Low-battery warnings |
 | 13.0 V and 90% | Automation `drs_not_recharging` | "Not recharging" detection |

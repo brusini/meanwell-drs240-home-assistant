@@ -47,4 +47,4 @@ jobs:
       - name: Check it with the current stable Home Assistant
         run: |
           docker run --rm -v "$PWD/ci-config:/config" ghcr.io/home-assistant/home-assistant:stable \
-            python -m homeassistant --script check_config --config /config
+            python -m homeassistant --script check_config --config /config --files

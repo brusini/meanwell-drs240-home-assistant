@@ -28,7 +28,7 @@ The problem showed up in two forms.
 
 **"CC but discharging".** After a restart of the DRS, and after some power outages, the unit reported the constant-current stage (`CHG_STATUS` = 2, orange LED), but no current flowed into the battery. The output stayed equal to the battery voltage, and the battery fed the load at the load current. In the early tests this lasted from 10 minutes to more than 8 hours.
 
-A likely reason, also not confirmed by Mean Well: the unit decides whether to charge from the battery voltage, with thresholds that fit lead-acid batteries. In the tests the battery sat at 13.15 V for hours while a quarter of its charge was already gone. By its voltage it looked full.
+Why the unit does this isn't known. One hypothesis, untested and not confirmed by Mean Well, is that it decides whether to charge from the battery voltage, with thresholds that fit lead-acid batteries. In the tests the battery sat at 13.15 V for hours while a quarter of its charge was already gone. By its voltage it looked full.
 
 The lesson for monitoring: **the charge stage doesn't tell you whether the battery is charging. The battery current does.**
 
@@ -74,6 +74,8 @@ All measurements are from one DRS-240-12 with a 12.8 V, 50 Ah LiFePO4 battery. T
 | 2026-10-28 | same | Rest for 12 hours | Battery current 0.02–0.04 A, battery flat at 13.81 V. No drain, no restart of the charge |
 | Two weeks on site | same, load 1.5–2.3 A | 69 outages followed by at least 2 minutes of AC | Charge started by itself after 67. Twice the unit stayed in "CC but discharging" |
 
+A note on the rows of October 15 and 16: a first link sat on CN12 pins 7 and 8 during those tests. It probably made no contact. The unit behaved as it did without a link, and when the link was replaced on October 20, the behavior changed at once.
+
 ## What was tried and why it failed
 
 | Attempt | Result |
@@ -117,9 +119,9 @@ Why the flooded preset fits the tested battery:
 
 Check the same three points for your battery. See the [checklist](#checklist-for-your-battery).
 
-The tested unit also differs from the factory state in a few registers that you don't need to copy: the life test is off (`UPS_CONFIG` = 8), temperature compensation is off (`CURVE_CONFIG` written as 128), the CC timeout is 900 minutes, the float timeout still holds 60 minutes from an early experiment, and the AC thresholds are lower. None of these made a visible difference in the tests. The full list is in [Match the settings reference](home-assistant-setup.md#7-match-the-settings-reference).
+The tested unit also differs from the factory state in a few registers that you don't need to copy: the life test is off (`UPS_CONFIG` = 8), temperature compensation is off (`CURVE_CONFIG` written as 128), the CC timeout is 900 minutes, the float timeout still holds 60 minutes from an early experiment, and the AC thresholds are lower. None of these made a visible difference, and the timeouts and the AC thresholds were never put to a test. The full list is in [Match the settings reference](home-assistant-setup.md#7-match-the-settings-reference).
 
-One of them can matter for a bigger battery. The CC stage has a timeout, 600 minutes by default, and by the manual the unit stops charging when it's reached. A full charge has to fit: capacity divided by charge current, in hours, should stay well below 10. The tested 50 Ah battery needs about 8.3 hours of charging at 6.1 A. That fits, but not by much, and the tested unit runs with the timeout raised to 900 minutes. To raise it, write register 181 with the time in minutes, the same way as the cut-off below:
+One of them can matter for a bigger battery. The CC stage has a timeout, 600 minutes by default, and by the manual the unit stops charging when it's reached. A full charge has to fit. As a rule of thumb, divide the capacity by the charge current, and if the result is more than about 8 hours, raise the timeout. The tested 50 Ah battery needs about 8.3 hours of charging at 6.1 A, which is too close to the default, so the tested unit runs with 900 minutes. To raise it, write register 181 with the time in minutes, the same way as the cut-off below:
 
 ```yaml
 action: script.drs_write_register
@@ -197,7 +199,7 @@ The full numbers are in [Testing and results](testing-and-results.md).
 
 ## When the charge doesn't restart
 
-Twice on site, the tested unit went into the "CC but discharging" state after AC power returned.
+Twice in the two weeks of site data, the tested unit went into the "CC but discharging" state after AC power returned.
 
 | Case | Before | Outage | Load | What followed |
 | --- | --- | --- | --- | --- |
@@ -207,7 +209,7 @@ Twice on site, the tested unit went into the "CC but discharging" state after AC
 What the two cases, and the earlier bench cases, have in common:
 
 - **A light load.** Every failure on record happened with less than 1.7 A on the output. With 2 A or more, the charge restarted 38 of 38 times on site and 11 of 11 times on the bench. With less than 2 A it restarted 29 of 31 times on site.
-- **On site, a very short outage.** Both site failures followed outages of 10 to 15 seconds. After outages longer than 30 seconds, the charge restarted 19 of 19 times. That isn't a rule, though: in the early bench tests, with a load of about 1.5 A, the charge failed to restart after outages of 45 seconds, 80 seconds, 7 minutes, and 8.5 minutes.
+- **On site, a very short outage.** Both site failures followed outages of 10 to 15 seconds. After outages longer than 30 seconds, the charge restarted 19 of 19 times. That isn't a rule, though: in the early bench tests, with a load of about 1.5 A, the charge failed to restart after outages of 45 seconds, 80 seconds, 7 minutes, and 8.5 minutes. And during the installation session on site, which isn't part of the statistics, the state appeared twice more after interruptions of 10 and 30 seconds at about 1.5 A.
 - **No pattern beyond that.** The day after the first failure, an outage of similar length, from the same state, at the same load, was followed by a normal charge.
 
 So the failure is intermittent. The load looks like a factor, and on site the length of the outage did too. The cause isn't known.
@@ -218,7 +220,7 @@ How to recognize it:
 - `CHG_STATUS` reads 2 (CC).
 - The output voltage stays equal to the battery voltage and falls slowly. When a charge really starts, the output steps up above the battery voltage within seconds.
 
-What it costs: the battery discharges at the load current for as long as the state lasts. On site, each episode ended about two hours in, with the next interruption of AC power: once a deliberate one, once a natural outage. On a site where AC power never drops, nothing would end it. How far the battery would discharge wasn't tested. By the manual, the next automatic restart of the charge is at 80% of the boost voltage, which is 11.36 V with the flooded preset.
+What it costs: the battery discharges at the load current for as long as the state lasts. On site, the two episodes ended after about two hours and after two and a half hours, with the next interruption of AC power: once a deliberate one, once a natural outage. On a site where AC power never drops, nothing would end it. How far the battery would discharge wasn't tested. By the manual, the next automatic restart of the charge is at 80% of the boost voltage, which is 11.36 V with the flooded preset.
 
 What to do:
 
@@ -249,7 +251,7 @@ Before you copy the configuration, check these points against the datasheet of y
 - [ ] The low-voltage protection of the BMS is below your cut-off voltage, including tolerances.
 - [ ] You know the lowest temperature at which the battery accepts a charge. If the battery can get colder than that, add a temperature sensor and the [battery cold alert](state-of-charge-and-alerts.md#battery-cold-alert).
 - [ ] The capacity is within the range the manual recommends: 20 Ah to 200 Ah for the 12 V model.
-- [ ] A full charge fits into the CC timeout: capacity divided by charge current is well below 10 hours, or you raise the timeout.
+- [ ] A full charge fits into the CC timeout: capacity divided by charge current is below about 8 hours, or you raise the timeout.
 - [ ] Your loads accept 14.5 V continuously, or run from a DC-DC regulator. That's the 14.2 V of the preset plus its 2% tolerance.
 
 Next: [Modbus register map](modbus-register-map.md)

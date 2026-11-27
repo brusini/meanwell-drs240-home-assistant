@@ -70,7 +70,7 @@ The battery charges, but at the next outage the output drops. `binary_sensor.drs
 This happened on the tested unit with CN12 pins 7 and 8 linked.
 
 1. Remove the link between pins 7 and 8.
-2. With AC power present, pull the battery fuse, wait a few seconds, and put it back. The unit detects the battery again and charges it. Keep it short: without a battery the unit may run its wake-up sequence, which moves the output voltage.
+2. With AC power present, pull the battery fuse, wait a few seconds, and put it back. The unit detects the battery again and charges it. Keep it short: Mean Well describes a wake-up sequence that repeats while no battery is connected, and it moves the output voltage.
 3. Test with a short outage.
 
 ## A register write succeeded, but nothing changed

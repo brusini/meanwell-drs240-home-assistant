@@ -82,7 +82,7 @@ The manual gives a tolerance of ±2% for these voltages.
 What the tested unit did:
 
 - **The constant-voltage stage is short.** At the end of a full charge of a 50 Ah LiFePO4 battery it lasted 6 to 12 minutes. It ended at about 1.5 A, which is 10% of the 15.4 A maximum charge current. Changing the taper current register (`CURVE_TC`) to 0.40 A didn't change that.
-- **In the rest state the battery is isolated.** The battery current reads 0.01 A to 0.04 A, which is inside the ±0.2 A tolerance of that reading, so the true value is unknown. The battery voltage settles at 13.7 V to 13.9 V within a few hours and stays flat. The longest rest period on record is 15.9 hours.
+- **In the rest state the battery is isolated.** The battery current reads 0.01 A to 0.04 A, which is inside the ±0.2 A tolerance of that reading, so the true value is unknown. The battery voltage settles at 13.7 V to 14.0 V within a few hours and stays flat. The longest rest period on record is 15.9 hours.
 - **The float stage doesn't regulate.** In 3-stage mode the battery fed the load for the whole float stage. This is the main problem with LiFePO4 batteries, and [LiFePO4 charging](lifepo4-charging.md) covers it.
 
 When does the next charge start? The manual's relay status table in section 5.5 says that after a completed 2-stage charge, charging restarts when the battery voltage drops to 80% of the boost voltage. That's 11.36 V with the flooded preset, which is nearly empty for a LiFePO4 battery. In practice, the tested unit started a new charge almost every time AC power returned after an outage. "Almost" is the subject of [When the charge doesn't restart](lifepo4-charging.md#when-the-charge-doesnt-restart).
@@ -117,11 +117,11 @@ According to the manual (sections 5.6, 5.7.2, and 5.10), the button does three d
 | Press | Effect |
 | --- | --- |
 | Short press | Starts the unit from the battery when no AC power is present |
-| Hold for 3 seconds | Disconnects the battery from the unit |
+| Hold for 3 seconds | Releases the battery connection, to end the battery-start or force-start mode |
 | 5 short presses within 15 seconds, with AC present | Restores the factory settings after the next power cycle. The Status LED flashes green three times |
 
 > [!WARNING]
-> Holding the button for 3 seconds during an outage switches your loads off. Five quick presses reset the charge curve, the output, and the AC threshold registers to the factory values (the list is in section 5.10). Consider covering or labeling the button.
+> A 3-second press releases the battery. What that does to the loads during an ordinary outage wasn't tested, so assume that it switches them off. Five quick presses reset the charge curve, the output voltage, and the AC threshold registers to the factory values (the list is in section 5.10, and it differs slightly between editions of the manual). Consider covering or labeling the button.
 
 The package includes a watchdog for the second case: [`binary_sensor.drs_settings_ok`](state-of-charge-and-alerts.md#settings-watchdog) turns off when the settings differ from your reference.
 
@@ -142,7 +142,7 @@ What you see in normal operation:
 | On AC, charging | Green | Off | Orange | Yes |
 | On AC, charge complete | Green | Off | Green | Yes |
 | On battery | Green | Red | Orange, blinking | Not recorded |
-| After the cut-off | Off | Off | Off | Yes: the unit is dark |
+| After the cut-off | Off | Off | Off | Not recorded. The unit stops answering on Modbus |
 
 A red blinking Status LED is a fault. Count the blinks between the pauses (manual, section 4.3):
 

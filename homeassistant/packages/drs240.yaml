@@ -804,8 +804,8 @@ script:
 
   # ---------- Register write with a whitelist (function code 06) ----------
   # Only charge-curve, battery-protection, UPS and AC-threshold registers within the raw ranges below
-  # (12 V model). OPERATION (0), VOUT_SET (32) and SYSTEM_CONFIG (196) are refused: a wrong value there
-  # can switch the output off, and you cannot undo that remotely if your network runs from the DRS.
+  # (12 V model). OPERATION (0), VOUT_SET (32) and SYSTEM_CONFIG (196) are refused: they control the
+  # output. OPERATION = 0 switched it off in the tests, and it took a power cycle by hand to get it back.
   # The DRS stores settings in its EEPROM: write by hand, never from a frequent automation.
   drs_write_register:
     alias: DRS write register

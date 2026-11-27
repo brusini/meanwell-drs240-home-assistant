@@ -30,7 +30,7 @@ flowchart LR
 - **State of charge and runtime.** The DRS reports neither, so the package counts ampere-hours itself and corrects the count whenever the battery is full or empty.
 - **Alerts** for a power outage, a low battery, a lost Modbus link, faults, changed settings, a battery that discharges while AC power is present, and a battery that isn't recharged.
 - **A dashboard** with one view for everything.
-- **A guarded write script** for the few registers worth changing. It refuses the three registers that switch the output off directly, and it limits the others to sane ranges.
+- **A guarded write script** for the few registers worth changing. It refuses the three registers that control the output (`OPERATION`, `VOUT_SET`, and `SYSTEM_CONFIG`), and it limits the others to sane ranges.
 
 ## Key findings
 
@@ -40,7 +40,7 @@ These are the things the manual doesn't tell you, or tells you differently. The 
 2. **Several registers accept a write, read it back, and change nothing.** That includes the output voltage, the charge current, and the taper current. On the tested unit the charge current followed the knob on the panel and ignored the register. See [Modbus register map](docs/modbus-register-map.md#settings).
 3. **3-stage charging drains a LiFePO4 battery.** In the float stage the AC side held 12.0 V, and the battery fed the whole load with AC present: about 9 Ah in 10 hours. See [LiFePO4 charging](docs/lifepo4-charging.md).
 4. **2-stage charging with the flooded preset (14.2 V) worked.** After the charge the battery rests, isolated. On site there were 138 power outages in two weeks. For 69 of them AC stayed on long enough afterward to judge the result, and the charge restarted by itself after 67.
-5. **Twice it didn't restart.** The DRS reported the constant-current stage while the battery kept discharging into the load for about two hours, until the next interruption of AC power. That's why this guide treats the alerts and a remotely switchable plug on the AC input as part of the setup. See [LiFePO4 charging](docs/lifepo4-charging.md#when-the-charge-doesnt-restart).
+5. **Twice it didn't restart.** The DRS reported the constant-current stage while the battery kept discharging into the load, for about two hours the first time and two and a half the second, until the next interruption of AC power. That's why this guide treats the alerts and a remotely switchable plug on the AC input as part of the setup. See [LiFePO4 charging](docs/lifepo4-charging.md#when-the-charge-doesnt-restart).
 6. **Leave the force-start pins open.** With CN12 pins 7 and 8 linked, the unit stopped switching to the battery after a battery cut-off. See [Hardware and wiring](docs/hardware-and-wiring.md#cn12-address-ntc-and-force-start).
 
 ## Quick start
@@ -73,7 +73,7 @@ Do the steps in this order. The last two settings of the unit need Home Assistan
 | Term | Meaning |
 | --- | --- |
 | CC, CV | The two charge stages. Constant current: the charger pushes a fixed current. Constant voltage: it holds the boost voltage while the current falls |
-| Boost voltage | The voltage the charger holds in the CV stage, 14.2 V to 14.6 V on the 12 V model |
+| Boost voltage | The voltage the charger holds in the CV stage, 14.0 V to 14.6 V on the 12 V model, depending on the preset |
 | Float | A third stage that's meant to hold a full battery at a lower voltage |
 | Taper current | The current at which the charger ends the CV stage |
 | 2-stage, 3-stage | Charging without or with the float stage. You choose with DIP switch 1 |
@@ -108,11 +108,11 @@ Not tested: the 24 V, 36 V, and 48 V models, the DRS-480, the CANBus version, le
 
 - **AC power can kill.** Disconnect power before you touch the terminals. If you aren't qualified to do AC wiring where you live, have an electrician do it. Connect the earth terminal.
 - **Batteries don't switch off.** Fit a fuse in the positive wire, as close to the battery as you can, sized for the wire. Don't let tools bridge the terminals.
-- **Register writes can switch your output off.** If your router runs from the DRS, a wrong write can cut you off from the site. The write script in this repository refuses the three registers that do this directly. It still allows `UPS_CONFIG`, where three bits switch the output off under conditions you set. Read [the warning](docs/modbus-register-map.md#ups_config-address-210-0x00d2) before you write it.
+- **Register writes can switch your output off.** If your router runs from the DRS, a wrong write can cut you off from the site. In the tests, writing 0 to `OPERATION` did exactly that. The write script in this repository refuses that register and the two others that control the output. It still allows `UPS_CONFIG`, where three bits switch the output off under conditions you set. Read [the warning](docs/modbus-register-map.md#ups_config-address-210-0x00d2) before you write it.
 - **No warranty.** This is a record of one person's tests on one unit, shared in good faith. It can be wrong for your unit, your firmware, or your battery. Check the manual of your battery and of your DRS before you copy a setting.
 - **Not affiliated.** This project isn't affiliated with, endorsed by, or supported by MEAN WELL Enterprises Co., Ltd. or any other company or project named here, including Home Assistant. Product names are trademarks of their owners.
 
-The official source for the DRS-240 is the [DRS-240/480 user manual on meanwell.com](https://www.meanwell.com/Upload/PDF/DRS-240,480-E.PDF). This guide cites it by section number and doesn't reproduce it.
+The official source for the DRS-240 is the [DRS-240/480 user manual on meanwell.com](https://www.meanwell.com/Upload/PDF/DRS-240,480-E.PDF). This guide cites it by section number and doesn't reproduce it. The section numbers refer to the 2026.03 edition (Ver 6). The relay status table in section 5.5 and the life test note aren't in the earlier 2023.10 edition.
 
 ## Contributing
 

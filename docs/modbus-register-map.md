@@ -197,14 +197,14 @@ The current manual (2026.03) also describes bits in the high byte that control h
 The tested unit runs with 8: wake-up on, everything else off.
 
 > [!WARNING]
-> Bits 2, 4, and 5 make the unit switch the output off while running on battery. Leave them at 0 unless you want exactly that.
+> Bits 2, 4, and 5 turn on timers that switch the output off while the unit runs on battery, and bit 1 lets the button do the same in force-start mode. Leave them at 0 unless you want exactly that.
 
 ## Writing registers safely
 
 - **Settings are stored in the EEPROM.** The manual doesn't state how many writes the memory survives. Write a register once, by hand. Don't write registers from automations that run on a schedule.
 - **Read it back, then check the behavior.** A successful read-back proves only that the unit stored the number.
 - **Never write `OPERATION`, `VOUT_SET`, or `SYSTEM_CONFIG` on a unit you can't reach by hand.** In the tests, one `OPERATION` = 0 switched the output off, and the output, with the router on it, stayed off until the unit was power-cycled by hand.
-- **A factory reset restores the settings.** Five short presses of the Battery Start button reset the operation, output voltage, charge curve, and AC threshold registers (section 5.10).
+- **A factory reset restores the settings.** Five short presses of the Battery Start button reset the output voltage, charge curve, and AC threshold registers. The exact list is in section 5.10 and differs slightly between editions of the manual. The battery cut-off registers aren't on it.
 
 ## Worked examples
 
